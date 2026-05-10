@@ -66,6 +66,9 @@ pub struct CredentialPool {
     current_id: Mutex<Option<u64>>,
     /// 按凭据 id 维护的 refresh 单点串行锁；avoid 同一凭据并发 refresh 浪费 refresh_token
     refresh_locks: Mutex<HashMap<u64, Arc<tokio::sync::Mutex<()>>>>,
+    /// 串行化 admin add_credential：snapshot 去重 + refresh await + store.add 跨 await，
+    /// 不持锁则两个并发 add 可能都通过 snapshot 检查后写入相同 hash 的凭据
+    add_lock: tokio::sync::Mutex<()>,
 }
 
 impl CredentialPool {
@@ -127,6 +130,7 @@ impl CredentialPool {
             load_balancing_mode: Mutex::new(mode),
             current_id: Mutex::new(None),
             refresh_locks: Mutex::new(HashMap::new()),
+            add_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -690,9 +694,15 @@ impl CredentialPool {
     }
 
     /// 添加新凭据（验证 + 哈希去重 + 实际刷新 + 持久化）
+    ///
+    /// 持 [`add_lock`] 串行化整个流程：snapshot 去重检查与 store.add 之间隔着 refresh
+    /// 的 .await，若不串行，两个并发 add 可同时通过 snapshot 后写入同 hash 凭据。
     pub async fn add_credential(&self, mut new_cred: Credential) -> Result<u64, AdminPoolError> {
-        // 1. 基本字段校验
+        let _add_guard = self.add_lock.lock().await;
+
+        // 1. 基本字段校验 + 哈希去重：一次提取字段后复用，避免后续 unwrap
         new_cred.canonicalize_auth_method();
+        let store_map = self.store.snapshot();
         if new_cred.is_api_key_credential() {
             let api_key = new_cred
                 .kiro_api_key
@@ -700,6 +710,13 @@ impl CredentialPool {
                 .ok_or(AdminPoolError::MissingApiKey)?;
             if api_key.is_empty() {
                 return Err(AdminPoolError::EmptyApiKey);
+            }
+            let new_hash = sha256_hex(api_key);
+            let exists = store_map
+                .values()
+                .any(|c| c.kiro_api_key.as_deref().map(sha256_hex).as_deref() == Some(&new_hash));
+            if exists {
+                return Err(AdminPoolError::DuplicateApiKey);
             }
         } else {
             let rt = new_cred
@@ -712,20 +729,7 @@ impl CredentialPool {
             if rt.len() < 100 || rt.contains("...") {
                 return Err(AdminPoolError::TruncatedRefreshToken(rt.len()));
             }
-        }
-
-        // 2. 基于 sha256 哈希检测重复
-        let store_map = self.store.snapshot();
-        if new_cred.is_api_key_credential() {
-            let new_hash = sha256_hex(new_cred.kiro_api_key.as_deref().unwrap());
-            let exists = store_map
-                .values()
-                .any(|c| c.kiro_api_key.as_deref().map(sha256_hex).as_deref() == Some(&new_hash));
-            if exists {
-                return Err(AdminPoolError::DuplicateApiKey);
-            }
-        } else {
-            let new_hash = sha256_hex(new_cred.refresh_token.as_deref().unwrap());
+            let new_hash = sha256_hex(rt);
             let exists = store_map
                 .values()
                 .any(|c| c.refresh_token.as_deref().map(sha256_hex).as_deref() == Some(&new_hash));
@@ -1283,6 +1287,45 @@ mod tests {
             .expect("entry exists");
         assert!(entry.disabled);
         assert_eq!(entry.disabled_reason.as_deref(), Some("Manual"));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn add_credential_concurrent_same_refresh_token_rejects_duplicate() {
+        // 没有 add_lock 时：两个并发 add 都能通过 snapshot 检查（snapshot 在 .await 前），
+        // mock.calls() 会到 2 且两个 add 都 Ok；持 add_lock 串行化后第二个会在拿锁后
+        // 重新 snapshot 看到第一个已写入，直接返回 DuplicateRefreshToken。
+        let mock = Arc::new(MockRefresher::new(50));
+        let mock_dyn: Arc<dyn DynTokenSource> = mock.clone();
+        let (pool, path) = pool_with_mock_refresher(0, MODE_PRIORITY, mock_dyn);
+        let pool = Arc::new(pool);
+
+        // 长度 >= 100 且不含 "..." 以通过 refresh_token 校验
+        let rt = "a".repeat(120);
+        let make_cred = || Credential {
+            refresh_token: Some(rt.clone()),
+            auth_method: Some("social".to_string()),
+            ..Default::default()
+        };
+
+        let p1 = pool.clone();
+        let p2 = pool.clone();
+        let c1 = make_cred();
+        let c2 = make_cred();
+        let (r1, r2) = tokio::join!(p1.add_credential(c1), p2.add_credential(c2));
+
+        let oks = [&r1, &r2].iter().filter(|r| r.is_ok()).count();
+        let dups = [&r1, &r2]
+            .iter()
+            .filter(|r| matches!(r, Err(AdminPoolError::DuplicateRefreshToken)))
+            .count();
+        assert_eq!(oks, 1, "并发 add 同一 refresh_token 应只成功 1 次");
+        assert_eq!(dups, 1, "另一个应返回 DuplicateRefreshToken");
+        assert_eq!(
+            mock.calls(),
+            1,
+            "重复凭据应在去重阶段被拒，不发起第二次 refresh"
+        );
         let _ = fs::remove_file(&path);
     }
 
