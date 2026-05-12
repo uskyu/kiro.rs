@@ -72,7 +72,7 @@ export function useForceRefreshToken() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => forceRefreshToken(id),
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['credentials'] })
     },
   })

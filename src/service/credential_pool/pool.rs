@@ -424,6 +424,16 @@ impl CredentialPool {
         self.state.report_refresh_token_invalid(id)
     }
 
+    fn handle_refresh_error(&self, id: u64, err: &RefreshError) {
+        let disabled = match err {
+            RefreshError::TokenInvalid => self.state.report_refresh_token_invalid(id),
+            _ => self.state.report_refresh_failure(id),
+        };
+        if disabled && *self.current_id.lock() == Some(id) {
+            self.switch_to_next();
+        }
+    }
+
     fn maybe_persist_stats(&self, _id: u64) {
         if let Some(p) = &self.stats_persister {
             p.record();
@@ -662,7 +672,12 @@ impl CredentialPool {
             *self.current_id.lock() = Some(*next_id);
             true
         } else if let Some(cur) = current {
-            !state_map.get(&cur).map(|s| s.disabled).unwrap_or(false)
+            let current_enabled = store_map.contains_key(&cur)
+                && !state_map.get(&cur).map(|s| s.disabled).unwrap_or(false);
+            if !current_enabled {
+                *self.current_id.lock() = None;
+            }
+            current_enabled
         } else {
             false
         }
@@ -805,7 +820,14 @@ impl CredentialPool {
         let outcome = match pick_refresher_kind(&fresh) {
             RefresherKind::Idc => self.refresher_idc.refresh(&fresh).await,
             RefresherKind::Social => self.refresher_social.refresh(&fresh).await,
-        }?;
+        };
+        let outcome = match outcome {
+            Ok(o) => o,
+            Err(e) => {
+                self.handle_refresh_error(id, &e);
+                return Err(e.into());
+            }
+        };
         let mut updated = fresh;
         updated.apply_refresh(&outcome);
         // admin 路径：持久化失败应反馈给调用方
@@ -866,7 +888,14 @@ impl CredentialPool {
         let outcome = match pick_refresher_kind(&fresh) {
             RefresherKind::Idc => self.refresher_idc.refresh(&fresh).await,
             RefresherKind::Social => self.refresher_social.refresh(&fresh).await,
-        }?;
+        };
+        let outcome = match outcome {
+            Ok(o) => o,
+            Err(e) => {
+                self.handle_refresh_error(id, &e);
+                return Err(e.into());
+            }
+        };
         let mut updated = fresh;
         updated.apply_refresh(&outcome);
         match self.store.replace_best_effort(id, updated.clone()) {
@@ -1901,10 +1930,7 @@ mod tests {
 
     /// 构造 pool，凭据文件在可删除的子目录中；返回 (pool, 子目录路径)。
     fn pool_with_deletable_dir(n: usize, mode: &str) -> (CredentialPool, PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "kiro-rs-pool-rm-{}",
-            Uuid::new_v4()
-        ));
+        let dir = std::env::temp_dir().join(format!("kiro-rs-pool-rm-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let creds_path = dir.join("creds.json");
         let mut creds_json = Vec::new();
@@ -1991,5 +2017,182 @@ mod tests {
             pool.state.get(id).unwrap().disabled,
             "state.disabled 应保持 true"
         );
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum FailMode {
+        TokenInvalid,
+        ServerError,
+    }
+
+    #[derive(Debug)]
+    struct FailingRefresher {
+        mode: FailMode,
+    }
+
+    impl FailingRefresher {
+        fn new(mode: FailMode) -> Self {
+            Self { mode }
+        }
+    }
+
+    impl TokenSource for FailingRefresher {
+        async fn refresh(&self, _cred: &Credential) -> Result<RefreshOutcome, RefreshError> {
+            match self.mode {
+                FailMode::TokenInvalid => Err(RefreshError::TokenInvalid),
+                FailMode::ServerError => Err(RefreshError::ServerError(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                )),
+            }
+        }
+    }
+
+    fn pool_with_failing_refresher(
+        n: usize,
+        refresher: Arc<dyn DynTokenSource>,
+    ) -> (CredentialPool, PathBuf) {
+        let path = tmp_path("failing-refresher");
+        let mut creds_json = Vec::new();
+        for i in 0..n {
+            creds_json.push(serde_json::json!({
+                "refreshToken": format!("rt-{i}"),
+                "authMethod": "social",
+                "priority": i,
+            }));
+        }
+        let arr = serde_json::Value::Array(creds_json);
+        fs::write(&path, serde_json::to_string_pretty(&arr).unwrap()).unwrap();
+
+        let file = Arc::new(CredentialsFileStore::new(Some(path.clone())));
+        let mut config = Config::default();
+        config.features.load_balancing_mode = MODE_PRIORITY.to_string();
+        let config = Arc::new(config);
+        let resolver = Arc::new(MachineIdResolver::new());
+        let (store, _) = CredentialStore::load(file, config.clone(), resolver.clone()).unwrap();
+        let store = Arc::new(store);
+        let state = Arc::new(CredentialState::new());
+        let stats = Arc::new(CredentialStats::new());
+        let pool = CredentialPool::new_with_refreshers(
+            store,
+            state,
+            stats,
+            None,
+            config,
+            resolver,
+            refresher.clone(),
+            refresher.clone(),
+            refresher,
+        );
+        let invalid: HashSet<u64> = HashSet::new();
+        let initial_disabled: HashSet<u64> = HashSet::new();
+        pool.install_initial_states(&invalid, &initial_disabled);
+        (pool, path)
+    }
+
+    #[tokio::test]
+    async fn force_refresh_token_invalid_disables_immediately() {
+        let mock: Arc<dyn DynTokenSource> = Arc::new(FailingRefresher::new(FailMode::TokenInvalid));
+        let (pool, path) = pool_with_failing_refresher(1, mock);
+        let id = pool.store.ids()[0];
+
+        let err = pool.force_refresh_token_for(id).await.unwrap_err();
+        assert!(matches!(
+            err,
+            AdminPoolError::Refresh(RefreshError::TokenInvalid)
+        ));
+
+        let s = pool.state.get(id).unwrap();
+        assert!(s.disabled, "TokenInvalid 应立即禁用凭据");
+        assert_eq!(s.disabled_reason, Some(DisabledReason::InvalidRefreshToken));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn force_refresh_failure_accumulates_and_disables_after_threshold() {
+        let mock: Arc<dyn DynTokenSource> = Arc::new(FailingRefresher::new(FailMode::ServerError));
+        let (pool, path) = pool_with_failing_refresher(1, mock);
+        let id = pool.store.ids()[0];
+
+        for i in 1..=2 {
+            let _ = pool.force_refresh_token_for(id).await;
+            let s = pool.state.get(id).unwrap();
+            assert_eq!(s.refresh_failure_count, i);
+            assert!(!s.disabled, "第 {i} 次失败不应禁用");
+        }
+
+        let _ = pool.force_refresh_token_for(id).await;
+        let s = pool.state.get(id).unwrap();
+        assert_eq!(s.refresh_failure_count, 3);
+        assert!(s.disabled, "第 3 次失败应禁用凭据");
+        assert_eq!(
+            s.disabled_reason,
+            Some(DisabledReason::TooManyRefreshFailures)
+        );
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn prepare_token_for_admin_token_invalid_disables_immediately() {
+        let mock: Arc<dyn DynTokenSource> = Arc::new(FailingRefresher::new(FailMode::TokenInvalid));
+        let (pool, path) = pool_with_failing_refresher(1, mock);
+        let id = pool.store.ids()[0];
+        let cred = pool.store.get(id).unwrap();
+
+        let err = pool.prepare_token_for_admin(id, &cred).await.unwrap_err();
+        assert!(matches!(
+            err,
+            AdminPoolError::Refresh(RefreshError::TokenInvalid)
+        ));
+
+        let s = pool.state.get(id).unwrap();
+        assert!(s.disabled, "TokenInvalid 应立即禁用凭据");
+        assert_eq!(s.disabled_reason, Some(DisabledReason::InvalidRefreshToken));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn force_refresh_disabling_current_switches_to_next() {
+        let mock: Arc<dyn DynTokenSource> = Arc::new(FailingRefresher::new(FailMode::TokenInvalid));
+        let (pool, path) = pool_with_failing_refresher(2, mock);
+
+        let snap = pool.admin_snapshot();
+        let current = snap.current_id;
+        assert_ne!(current, 0, "install_initial_states 应选出 current_id");
+
+        let _ = pool.force_refresh_token_for(current).await;
+
+        let snap = pool.admin_snapshot();
+        assert_ne!(
+            snap.current_id, current,
+            "禁用当前凭据后 current_id 应切换到下一条"
+        );
+        let other = pool
+            .store
+            .ids()
+            .into_iter()
+            .find(|&id| id != current)
+            .unwrap();
+        assert_eq!(snap.current_id, other);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn force_refresh_disabling_only_current_clears_current_id() {
+        let mock: Arc<dyn DynTokenSource> = Arc::new(FailingRefresher::new(FailMode::TokenInvalid));
+        let (pool, path) = pool_with_failing_refresher(1, mock);
+
+        let snap = pool.admin_snapshot();
+        let current = snap.current_id;
+        assert_ne!(current, 0, "install_initial_states 应选出 current_id");
+
+        let _ = pool.force_refresh_token_for(current).await;
+
+        let snap = pool.admin_snapshot();
+        assert_eq!(
+            snap.current_id, 0,
+            "最后一条可用凭据被禁用后 current_id 应清空"
+        );
+        assert_eq!(snap.available, 0);
+        let _ = fs::remove_file(&path);
     }
 }
