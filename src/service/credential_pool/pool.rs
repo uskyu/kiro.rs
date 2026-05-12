@@ -496,11 +496,7 @@ impl CredentialPool {
             let entry = if invalid_config_ids.contains(&id) {
                 EntryState::disabled_with(DisabledReason::InvalidConfig)
             } else if initial_disabled_ids.contains(&id) {
-                EntryState {
-                    disabled: true,
-                    disabled_reason: None,
-                    ..Default::default()
-                }
+                EntryState::disabled_with(DisabledReason::Manual)
             } else {
                 EntryState::default()
             };
@@ -1566,6 +1562,27 @@ mod tests {
         pool.install_initial_states(&invalid, &initial_disabled);
         let snap = pool.admin_snapshot();
         assert_eq!(snap.current_id, 0, "无可用凭据时 current_id 保持 0");
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn install_initial_states_disabled_ids_carry_manual_reason() {
+        let (pool, path) = pool_with_n_credentials(2, MODE_PRIORITY);
+        let invalid: HashSet<u64> = HashSet::new();
+        let initial_disabled: HashSet<u64> = [1].into_iter().collect();
+        pool.install_initial_states(&invalid, &initial_disabled);
+        let snap = pool.admin_snapshot();
+        let entry = snap
+            .entries
+            .iter()
+            .find(|e| e.id == 1)
+            .expect("id=1 应存在");
+        assert!(entry.disabled);
+        assert_eq!(
+            entry.disabled_reason.as_deref(),
+            Some("Manual"),
+            "文件预禁用应携带 Manual reason"
+        );
         let _ = fs::remove_file(&path);
     }
 
