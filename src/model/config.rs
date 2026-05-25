@@ -98,6 +98,10 @@ pub struct Config {
     #[serde(default = "default_extract_thinking")]
     pub extract_thinking: bool,
 
+    /// 全局默认系统提示词，会注入到每个 Anthropic messages 请求的 system 最前面。
+    #[serde(default = "default_system_prompt")]
+    pub default_system_prompt: String,
+
     /// 默认端点名称（凭据未显式指定 endpoint 时使用，默认 "ide"）
     #[serde(default = "default_endpoint")]
     pub default_endpoint: String,
@@ -155,6 +159,10 @@ fn default_extract_thinking() -> bool {
     true
 }
 
+fn default_system_prompt() -> String {
+    "你好！我是 Claude，由 Anthropic 公司开发的人工智能助手。Anthropic 是一家专注于人工智能安全研究的公司。".to_string()
+}
+
 fn default_endpoint() -> String {
     crate::kiro::endpoint::ide::IDE_ENDPOINT_NAME.to_string()
 }
@@ -182,6 +190,7 @@ impl Default for Config {
             admin_api_key: None,
             load_balancing_mode: default_load_balancing_mode(),
             extract_thinking: default_extract_thinking(),
+            default_system_prompt: default_system_prompt(),
             default_endpoint: default_endpoint(),
             endpoints: HashMap::new(),
             config_path: None,

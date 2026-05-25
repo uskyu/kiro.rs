@@ -9,6 +9,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
+use parking_lot::RwLock;
 
 use crate::common::auth;
 use crate::kiro::provider::KiroProvider;
@@ -25,15 +26,22 @@ pub struct AppState {
     pub kiro_provider: Option<Arc<KiroProvider>>,
     /// 是否开启非流式响应的 thinking 块提取
     pub extract_thinking: bool,
+    /// 全局默认系统提示词
+    pub default_system_prompt: Arc<RwLock<String>>,
 }
 
 impl AppState {
     /// 创建新的应用状态
-    pub fn new(api_key: impl Into<String>, extract_thinking: bool) -> Self {
+    pub fn new(
+        api_key: impl Into<String>,
+        extract_thinking: bool,
+        default_system_prompt: Arc<RwLock<String>>,
+    ) -> Self {
         Self {
             api_key: api_key.into(),
             kiro_provider: None,
             extract_thinking,
+            default_system_prompt,
         }
     }
 

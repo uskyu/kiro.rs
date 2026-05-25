@@ -10,6 +10,8 @@ import {
   deleteCredential,
   getLoadBalancingMode,
   setLoadBalancingMode,
+  getSystemPrompt,
+  setSystemPrompt,
 } from '@/api/credentials'
 import type { AddCredentialRequest } from '@/types/api'
 
@@ -115,6 +117,23 @@ export function useSetLoadBalancingMode() {
     mutationFn: setLoadBalancingMode,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loadBalancingMode'] })
+    },
+  })
+}
+
+export function useSystemPrompt() {
+  return useQuery({
+    queryKey: ['systemPrompt'],
+    queryFn: getSystemPrompt,
+  })
+}
+
+export function useSetSystemPrompt() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: setSystemPrompt,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['systemPrompt'] })
     },
   })
 }

@@ -4,17 +4,20 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Context;
 use chrono::Utc;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
 use crate::kiro::model::credentials::KiroCredentials;
 use crate::kiro::token_manager::MultiTokenManager;
+use crate::model::config::Config;
 
 use super::error::AdminServiceError;
 use super::types::{
     AddCredentialRequest, AddCredentialResponse, BalanceResponse, CredentialStatusItem,
     CredentialsStatusResponse, LoadBalancingModeResponse, SetLoadBalancingModeRequest,
+    SetSystemPromptRequest, SystemPromptResponse,
 };
 
 /// 余额缓存过期时间（秒），5 分钟
@@ -38,12 +41,14 @@ pub struct AdminService {
     cache_path: Option<PathBuf>,
     /// 已注册的端点名称集合（用于 add_credential 校验）
     known_endpoints: HashSet<String>,
+    default_system_prompt: Arc<RwLock<String>>,
 }
 
 impl AdminService {
     pub fn new(
         token_manager: Arc<MultiTokenManager>,
         known_endpoints: impl IntoIterator<Item = String>,
+        default_system_prompt: Arc<RwLock<String>>,
     ) -> Self {
         let cache_path = token_manager
             .cache_dir()
@@ -56,6 +61,7 @@ impl AdminService {
             balance_cache: Mutex::new(balance_cache),
             cache_path,
             known_endpoints: known_endpoints.into_iter().collect(),
+            default_system_prompt,
         }
     }
 
@@ -297,6 +303,47 @@ impl AdminService {
             .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
 
         Ok(LoadBalancingModeResponse { mode: req.mode })
+    }
+
+    /// 获取全局默认系统提示词
+    pub fn get_system_prompt(&self) -> SystemPromptResponse {
+        SystemPromptResponse {
+            default_system_prompt: self.default_system_prompt.read().clone(),
+        }
+    }
+
+    pub fn set_system_prompt(
+        &self,
+        req: SetSystemPromptRequest,
+    ) -> Result<SystemPromptResponse, AdminServiceError> {
+        let prompt = req.default_system_prompt;
+
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.default_system_prompt = prompt.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist default system prompt: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        *self.default_system_prompt.write() = prompt.clone();
+
+        Ok(SystemPromptResponse {
+            default_system_prompt: prompt,
+        })
     }
 
     /// 强制刷新指定凭据的 Token

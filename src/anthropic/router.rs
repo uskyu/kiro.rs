@@ -38,8 +38,9 @@ pub fn create_router_with_provider(
     api_key: impl Into<String>,
     kiro_provider: Option<KiroProvider>,
     extract_thinking: bool,
+    default_system_prompt: std::sync::Arc<parking_lot::RwLock<String>>,
 ) -> Router {
-    let mut state = AppState::new(api_key, extract_thinking);
+    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt);
     if let Some(provider) = kiro_provider {
         state = state.with_kiro_provider(provider);
     }

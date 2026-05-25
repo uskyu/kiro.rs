@@ -24,7 +24,10 @@ use uuid::Uuid;
 use super::converter::{ConversionError, convert_request};
 use super::middleware::AppState;
 use super::stream::{BufferedStreamContext, SseEvent, StreamContext};
-use super::types::{CountTokensRequest, CountTokensResponse, ErrorResponse, MessagesRequest, Model, ModelsResponse, OutputConfig, Thinking};
+use super::types::{
+    CountTokensRequest, CountTokensResponse, ErrorResponse, MessagesRequest, Model,
+    ModelsResponse, OutputConfig, SystemMessage, Thinking,
+};
 use super::websearch;
 
 /// 将 KiroProvider 错误映射为 HTTP 响应
@@ -65,6 +68,51 @@ fn map_provider_error(err: Error) -> Response {
         )),
     )
         .into_response()
+}
+
+fn apply_default_system_prompt(payload: &mut MessagesRequest, default_system_prompt: &str) {
+    let default_system_prompt = default_system_prompt.trim();
+    if default_system_prompt.is_empty() {
+        return;
+    }
+
+    match payload.system.as_mut() {
+        Some(system) => system.insert(
+            0,
+            SystemMessage {
+                text: default_system_prompt.to_string(),
+            },
+        ),
+        None => {
+            payload.system = Some(vec![SystemMessage {
+                text: default_system_prompt.to_string(),
+            }]);
+        }
+    }
+}
+
+fn apply_default_system_prompt_to_count_tokens(
+    payload: &mut CountTokensRequest,
+    default_system_prompt: &str,
+) {
+    let default_system_prompt = default_system_prompt.trim();
+    if default_system_prompt.is_empty() {
+        return;
+    }
+
+    match payload.system.as_mut() {
+        Some(system) => system.insert(
+            0,
+            SystemMessage {
+                text: default_system_prompt.to_string(),
+            },
+        ),
+        None => {
+            payload.system = Some(vec![SystemMessage {
+                text: default_system_prompt.to_string(),
+            }]);
+        }
+    }
 }
 
 /// GET /v1/models
@@ -204,6 +252,9 @@ pub async fn post_messages(
         message_count = %payload.messages.len(),
         "Received POST /v1/messages request"
     );
+
+    let default_system_prompt = state.default_system_prompt.read().clone();
+    apply_default_system_prompt(&mut payload, &default_system_prompt);
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {
         Some(p) => p.clone(),
@@ -680,13 +731,17 @@ fn override_thinking_from_model_name(payload: &mut MessagesRequest) {
 ///
 /// 计算消息的 token 数量
 pub async fn count_tokens(
-    JsonExtractor(payload): JsonExtractor<CountTokensRequest>,
+    State(state): State<AppState>,
+    JsonExtractor(mut payload): JsonExtractor<CountTokensRequest>,
 ) -> impl IntoResponse {
     tracing::info!(
         model = %payload.model,
         message_count = %payload.messages.len(),
         "Received POST /v1/messages/count_tokens request"
     );
+
+    let default_system_prompt = state.default_system_prompt.read().clone();
+    apply_default_system_prompt_to_count_tokens(&mut payload, &default_system_prompt);
 
     let total_tokens = token::count_all_tokens(
         payload.model,
@@ -716,6 +771,9 @@ pub async fn post_messages_cc(
         message_count = %payload.messages.len(),
         "Received POST /cc/v1/messages request"
     );
+
+    let default_system_prompt = state.default_system_prompt.read().clone();
+    apply_default_system_prompt(&mut payload, &default_system_prompt);
 
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {

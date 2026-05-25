@@ -10,7 +10,7 @@ use super::{
     middleware::AdminState,
     types::{
         AddCredentialRequest, SetDisabledRequest, SetLoadBalancingModeRequest, SetPriorityRequest,
-        SuccessResponse,
+        SetSystemPromptRequest, SuccessResponse,
     },
 };
 
@@ -136,6 +136,25 @@ pub async fn set_load_balancing_mode(
     Json(payload): Json<SetLoadBalancingModeRequest>,
 ) -> impl IntoResponse {
     match state.service.set_load_balancing_mode(payload) {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// GET /api/admin/config/system-prompt
+/// 获取全局默认系统提示词
+pub async fn get_system_prompt(State(state): State<AdminState>) -> impl IntoResponse {
+    let response = state.service.get_system_prompt();
+    Json(response)
+}
+
+/// PUT /api/admin/config/system-prompt
+/// 设置全局默认系统提示词
+pub async fn set_system_prompt(
+    State(state): State<AdminState>,
+    Json(payload): Json<SetSystemPromptRequest>,
+) -> impl IntoResponse {
+    match state.service.set_system_prompt(payload) {
         Ok(response) => Json(response).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }

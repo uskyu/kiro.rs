@@ -63,6 +63,14 @@ export interface SetPriorityRequest {
   priority: number
 }
 
+export interface SystemPromptResponse {
+  defaultSystemPrompt: string
+}
+
+export interface SetSystemPromptRequest {
+  defaultSystemPrompt: string
+}
+
 // 添加凭据请求
 export interface AddCredentialRequest {
   refreshToken?: string

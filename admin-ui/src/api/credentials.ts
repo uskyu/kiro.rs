@@ -6,6 +6,8 @@ import type {
   SuccessResponse,
   SetDisabledRequest,
   SetPriorityRequest,
+  SetSystemPromptRequest,
+  SystemPromptResponse,
   AddCredentialRequest,
   AddCredentialResponse,
 } from '@/types/api'
@@ -102,5 +104,20 @@ export async function getLoadBalancingMode(): Promise<{ mode: 'priority' | 'bala
 // 设置负载均衡模式
 export async function setLoadBalancingMode(mode: 'priority' | 'balanced'): Promise<{ mode: 'priority' | 'balanced' }> {
   const { data } = await api.put<{ mode: 'priority' | 'balanced' }>('/config/load-balancing', { mode })
+  return data
+}
+
+export async function getSystemPrompt(): Promise<SystemPromptResponse> {
+  const { data } = await api.get<SystemPromptResponse>('/config/system-prompt')
+  return data
+}
+
+export async function setSystemPrompt(
+  defaultSystemPrompt: string
+): Promise<SystemPromptResponse> {
+  const { data } = await api.put<SystemPromptResponse>(
+    '/config/system-prompt',
+    { defaultSystemPrompt } as SetSystemPromptRequest
+  )
   return data
 }

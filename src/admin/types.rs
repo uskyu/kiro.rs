@@ -196,6 +196,20 @@ pub struct SetLoadBalancingModeRequest {
     pub mode: String,
 }
 
+/// 默认系统提示词响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemPromptResponse {
+    pub default_system_prompt: String,
+}
+
+/// 设置默认系统提示词请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSystemPromptRequest {
+    pub default_system_prompt: String,
+}
+
 // ============ 通用响应 ============
 
 /// 操作成功响应
