@@ -109,7 +109,7 @@ export function CacheSimulationPanel() {
           <span>Cache Simulation (缓存计费模拟)</span>
           {enabled && (
             <span className="text-xs font-normal px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-              已启用{forceOverride ? ' · 强制覆盖' : ` · 预计节省 ~${savingsPercent}%`}
+              已启用 · 混合模式
             </span>
           )}
         </CardTitle>
@@ -134,82 +134,66 @@ export function CacheSimulationPanel() {
 
         {enabled && (
           <>
-            {/* ===== 强制覆盖模式 ===== */}
+            {/* ===== 强制覆盖（填>0的字段会写死） ===== */}
             <div className="border rounded-lg p-3 space-y-3 bg-red-50/50 dark:bg-red-950/20">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-red-700 dark:text-red-400">
-                  🔒 强制覆盖模式（直接写死固定值）
+                  🔒 强制覆盖（填 &gt;0 = 写死，填 0 = 走下面的倍率）
                 </label>
-                <button
-                  onClick={() => setForceOverride(!forceOverride)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    forceOverride ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      forceOverride ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
               </div>
 
-              {forceOverride && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">input_tokens（固定值）</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={forceInputTokens}
-                      onChange={(e) => setForceInputTokens(Number(e.target.value))}
-                      className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">output_tokens（固定值）</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={forceOutputTokens}
-                      onChange={(e) => setForceOutputTokens(Number(e.target.value))}
-                      className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">cache_read_input_tokens</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={forceCacheReadTokens}
-                      onChange={(e) => setForceCacheReadTokens(Number(e.target.value))}
-                      className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">cache_creation_input_tokens</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={forceCacheCreationTokens}
-                      onChange={(e) => setForceCacheCreationTokens(Number(e.target.value))}
-                      className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-red-600 dark:text-red-400">
-                      ⚠️ 强制覆盖模式：填 0 = 不覆盖该字段（保留实际值），填 &gt;0 = 强制写死为该值。
-                      只想改一两个字段就只填那几个，其余留 0。
-                    </p>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">input_tokens（0=走倍率）</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={forceInputTokens}
+                    onChange={(e) => setForceInputTokens(Number(e.target.value))}
+                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
                 </div>
-              )}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">output_tokens（0=走倍率）</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={forceOutputTokens}
+                    onChange={(e) => setForceOutputTokens(Number(e.target.value))}
+                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">cache_read_input_tokens（0=走比例）</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={forceCacheReadTokens}
+                    onChange={(e) => setForceCacheReadTokens(Number(e.target.value))}
+                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">cache_creation_input_tokens（0=走比例）</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={forceCacheCreationTokens}
+                    onChange={(e) => setForceCacheCreationTokens(Number(e.target.value))}
+                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">
+                    每个字段独立生效：&gt;0 强制写死，=0 走下面的倍率+缓存比例计算。可混合使用。
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* ===== 倍率模式（强制覆盖关闭时显示） ===== */}
-            {!forceOverride && (
-              <div className="border rounded-lg p-3 space-y-3">
-                <p className="text-xs font-medium text-muted-foreground">📊 倍率模式（按比例缩减）</p>
+            {/* ===== 倍率 + 缓存模拟（强制覆盖=0的字段走这里） ===== */}
+            <div className="border rounded-lg p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">📊 倍率 + 缓存模拟（未被强制覆盖的字段走这里）</p>
 
                 {/* Input Token 倍率 */}
                 <div className="space-y-2">
@@ -316,7 +300,6 @@ export function CacheSimulationPanel() {
                   </p>
                 </div>
               </div>
-            )}
           </>
         )}
 

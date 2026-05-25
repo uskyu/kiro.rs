@@ -33,9 +33,10 @@ use super::websearch;
 
 /// 根据缓存模拟配置，构造包含缓存字段的 usage JSON
 ///
-/// 两种模式：
-/// 1. 强制覆盖模式（force_override=true）：直接使用固定值，无视实际 token 数
-/// 2. 倍率模式（默认）：按比例缩减 + 缓存模拟叠加
+/// 强制覆盖 + 倍率混合模式：
+/// - 字段值 > 0：使用强制覆盖的固定值
+/// - 字段值 = 0：走倍率缩减（乘以 multiplier）
+/// - 缓存模拟：在最终 input_tokens 基础上叠加
 fn build_usage_with_cache_simulation(
     input_tokens: i32,
     output_tokens: i32,
@@ -48,46 +49,47 @@ fn build_usage_with_cache_simulation(
         });
     }
 
-    // 强制覆盖模式：只覆盖填了值(>0)的字段，其余保留实际值
-    if cache_config.force_override {
-        let fi = if cache_config.force_input_tokens > 0 { cache_config.force_input_tokens } else { input_tokens };
-        let fo = if cache_config.force_output_tokens > 0 { cache_config.force_output_tokens } else { output_tokens };
+    // 计算最终报告值：强制覆盖(>0)优先，否则走倍率
+    let reported_input = if cache_config.force_input_tokens > 0 {
+        cache_config.force_input_tokens
+    } else {
+        (input_tokens as f64 * cache_config.input_tokens_multiplier).max(1.0) as i32
+    };
 
-        let mut usage = json!({
-            "input_tokens": fi,
-            "output_tokens": fo
-        });
-        if cache_config.force_cache_read_tokens > 0 {
-            usage["cache_read_input_tokens"] = json!(cache_config.force_cache_read_tokens);
-        }
-        if cache_config.force_cache_creation_tokens > 0 {
-            usage["cache_creation_input_tokens"] = json!(cache_config.force_cache_creation_tokens);
-        }
-        return usage;
-    }
+    let reported_output = if cache_config.force_output_tokens > 0 {
+        cache_config.force_output_tokens
+    } else {
+        (output_tokens as f64 * cache_config.output_tokens_multiplier).max(1.0) as i32
+    };
 
-    // 倍率模式：按比例缩减
-    let reported_input = (input_tokens as f64 * cache_config.input_tokens_multiplier).max(1.0) as i32;
-    let reported_output = (output_tokens as f64 * cache_config.output_tokens_multiplier).max(1.0) as i32;
+    // 缓存字段：强制覆盖(>0)优先，否则按缓存模拟比例计算
+    let cache_read = if cache_config.force_cache_read_tokens > 0 {
+        cache_config.force_cache_read_tokens
+    } else if input_tokens >= cache_config.min_tokens_to_trigger {
+        (reported_input as f64 * cache_config.cache_hit_ratio) as i32
+    } else {
+        0
+    };
 
-    // 如果 input_tokens 低于阈值，只做倍率缩减，不注入缓存字段
-    if input_tokens < cache_config.min_tokens_to_trigger {
-        return json!({
-            "input_tokens": reported_input,
-            "output_tokens": reported_output
-        });
-    }
+    let cache_creation = if cache_config.force_cache_creation_tokens > 0 {
+        cache_config.force_cache_creation_tokens
+    } else if input_tokens >= cache_config.min_tokens_to_trigger {
+        (reported_input as f64 * cache_config.cache_creation_ratio) as i32
+    } else {
+        0
+    };
 
-    // 在缩减后的 input_tokens 基础上计算缓存模拟
-    let cache_read = (reported_input as f64 * cache_config.cache_hit_ratio) as i32;
-    let cache_creation = (reported_input as f64 * cache_config.cache_creation_ratio) as i32;
-
-    json!({
+    let mut usage = json!({
         "input_tokens": reported_input,
-        "output_tokens": reported_output,
-        "cache_creation_input_tokens": cache_creation,
-        "cache_read_input_tokens": cache_read
-    })
+        "output_tokens": reported_output
+    });
+    if cache_read > 0 {
+        usage["cache_read_input_tokens"] = json!(cache_read);
+    }
+    if cache_creation > 0 {
+        usage["cache_creation_input_tokens"] = json!(cache_creation);
+    }
+    usage
 }
 
 /// 将 KiroProvider 错误映射为 HTTP 响应
