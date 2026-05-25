@@ -12,6 +12,8 @@ import { AddCredentialDialog } from '@/components/add-credential-dialog'
 import { BatchImportDialog } from '@/components/batch-import-dialog'
 import { KamImportDialog } from '@/components/kam-import-dialog'
 import { BatchVerifyDialog, type VerifyResult } from '@/components/batch-verify-dialog'
+import { CacheSimulationPanel } from '@/components/cache-simulation-panel'
+import { ModelPromptsPanel } from '@/components/model-prompts-panel'
 import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-credentials'
 import { getCredentialBalance, forceRefreshToken } from '@/api/credentials'
 import { extractErrorMessage } from '@/lib/utils'
@@ -660,6 +662,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* 模型级提示词映射 */}
+        <ModelPromptsPanel />
+
+        {/* 缓存模拟调控面板 */}
+        <CacheSimulationPanel />
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">

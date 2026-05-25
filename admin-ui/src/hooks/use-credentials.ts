@@ -12,8 +12,12 @@ import {
   setLoadBalancingMode,
   getSystemPrompt,
   setSystemPrompt,
+  getCacheSimulation,
+  setCacheSimulation,
+  getModelSystemPrompts,
+  setModelSystemPrompts,
 } from '@/api/credentials'
-import type { AddCredentialRequest } from '@/types/api'
+import type { AddCredentialRequest, SetCacheSimulationRequest } from '@/types/api'
 
 // 查询凭据列表
 export function useCredentials() {
@@ -134,6 +138,42 @@ export function useSetSystemPrompt() {
     mutationFn: setSystemPrompt,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['systemPrompt'] })
+    },
+  })
+}
+
+// 缓存模拟配置
+export function useCacheSimulation() {
+  return useQuery({
+    queryKey: ['cacheSimulation'],
+    queryFn: getCacheSimulation,
+  })
+}
+
+export function useSetCacheSimulation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (config: SetCacheSimulationRequest) => setCacheSimulation(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cacheSimulation'] })
+    },
+  })
+}
+
+// 模型级系统提示词映射
+export function useModelSystemPrompts() {
+  return useQuery({
+    queryKey: ['modelSystemPrompts'],
+    queryFn: getModelSystemPrompts,
+  })
+}
+
+export function useSetModelSystemPrompts() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (prompts: Record<string, string>) => setModelSystemPrompts(prompts),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['modelSystemPrompts'] })
     },
   })
 }

@@ -210,6 +210,54 @@ pub struct SetSystemPromptRequest {
     pub default_system_prompt: String,
 }
 
+// ============ 模型级系统提示词映射 ============
+
+/// 模型级系统提示词映射响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSystemPromptsResponse {
+    /// 模型名称 → 专用系统提示词
+    pub model_system_prompts: std::collections::HashMap<String, String>,
+}
+
+/// 设置模型级系统提示词映射请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetModelSystemPromptsRequest {
+    /// 模型名称 → 专用系统提示词
+    pub model_system_prompts: std::collections::HashMap<String, String>,
+}
+
+// ============ 缓存模拟配置 ============
+
+/// 缓存模拟配置响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheSimulationResponse {
+    /// 是否启用
+    pub enabled: bool,
+    /// 缓存命中比例（0.0-1.0）
+    pub cache_hit_ratio: f64,
+    /// 缓存写入比例（0.0-1.0）
+    pub cache_creation_ratio: f64,
+    /// 最小触发阈值
+    pub min_tokens_to_trigger: i32,
+}
+
+/// 设置缓存模拟配置请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCacheSimulationRequest {
+    /// 是否启用
+    pub enabled: bool,
+    /// 缓存命中比例（0.0-1.0）
+    pub cache_hit_ratio: f64,
+    /// 缓存写入比例（0.0-1.0）
+    pub cache_creation_ratio: f64,
+    /// 最小触发阈值
+    pub min_tokens_to_trigger: i32,
+}
+
 // ============ 通用响应 ============
 
 /// 操作成功响应

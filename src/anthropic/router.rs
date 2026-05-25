@@ -6,8 +6,11 @@ use axum::{
     middleware,
     routing::{get, post},
 };
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 use crate::kiro::provider::KiroProvider;
+use crate::model::config::CacheSimulationConfig;
 
 use super::{
     handlers::{count_tokens, get_models, post_messages, post_messages_cc},
@@ -38,9 +41,11 @@ pub fn create_router_with_provider(
     api_key: impl Into<String>,
     kiro_provider: Option<KiroProvider>,
     extract_thinking: bool,
-    default_system_prompt: std::sync::Arc<parking_lot::RwLock<String>>,
+    default_system_prompt: Arc<RwLock<String>>,
+    model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
+    cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
 ) -> Router {
-    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt);
+    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt, model_system_prompts, cache_simulation);
     if let Some(provider) = kiro_provider {
         state = state.with_kiro_provider(provider);
     }

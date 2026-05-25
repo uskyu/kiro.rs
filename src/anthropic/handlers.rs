@@ -6,6 +6,7 @@ use anyhow::Error;
 use crate::kiro::model::events::Event;
 use crate::kiro::model::requests::kiro::KiroRequest;
 use crate::kiro::parser::decoder::EventStreamDecoder;
+use crate::model::config::CacheSimulationConfig;
 use crate::token;
 use axum::{
     Json as JsonExtractor,
@@ -29,6 +30,33 @@ use super::types::{
     ModelsResponse, OutputConfig, SystemMessage, Thinking,
 };
 use super::websearch;
+
+/// 根据缓存模拟配置，构造包含缓存字段的 usage JSON
+///
+/// 如果缓存模拟未启用或 input_tokens 低于阈值，返回标准 usage。
+/// 否则将 input_tokens 拆分为 cache_read_input_tokens 和 cache_creation_input_tokens。
+fn build_usage_with_cache_simulation(
+    input_tokens: i32,
+    output_tokens: i32,
+    cache_config: &CacheSimulationConfig,
+) -> serde_json::Value {
+    if !cache_config.enabled || input_tokens < cache_config.min_tokens_to_trigger {
+        return json!({
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
+        });
+    }
+
+    let cache_read = (input_tokens as f64 * cache_config.cache_hit_ratio) as i32;
+    let cache_creation = (input_tokens as f64 * cache_config.cache_creation_ratio) as i32;
+
+    json!({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_creation_input_tokens": cache_creation,
+        "cache_read_input_tokens": cache_read
+    })
+}
 
 /// 将 KiroProvider 错误映射为 HTTP 响应
 fn map_provider_error(err: Error) -> Response {
@@ -89,6 +117,43 @@ fn apply_default_system_prompt(payload: &mut MessagesRequest, default_system_pro
             }]);
         }
     }
+}
+
+/// 根据模型名称获取有效的系统提示词
+///
+/// 优先匹配模型级提示词（支持前缀匹配），未匹配则回退到全局默认提示词。
+fn get_effective_system_prompt(
+    model: &str,
+    model_system_prompts: &std::collections::HashMap<String, String>,
+    default_system_prompt: &str,
+) -> String {
+    // 精确匹配
+    if let Some(prompt) = model_system_prompts.get(model) {
+        return prompt.clone();
+    }
+
+    // 前缀匹配（按键长度降序，优先匹配更具体的前缀）
+    let mut best_match: Option<(&str, &str)> = None;
+    for (key, prompt) in model_system_prompts {
+        if model.starts_with(key.as_str()) {
+            match best_match {
+                Some((best_key, _)) if key.len() > best_key.len() => {
+                    best_match = Some((key.as_str(), prompt.as_str()));
+                }
+                None => {
+                    best_match = Some((key.as_str(), prompt.as_str()));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some((_, prompt)) = best_match {
+        return prompt.to_string();
+    }
+
+    // 回退到全局默认
+    default_system_prompt.to_string()
 }
 
 fn apply_default_system_prompt_to_count_tokens(
@@ -254,7 +319,9 @@ pub async fn post_messages(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
-    apply_default_system_prompt(&mut payload, &default_system_prompt);
+    let model_system_prompts = state.model_system_prompts.read().clone();
+    let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
+    apply_default_system_prompt(&mut payload, &effective_prompt);
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {
         Some(p) => p.clone(),
@@ -270,6 +337,7 @@ pub async fn post_messages(
                 .into_response();
         }
     };
+
 
     // 检测模型名是否包含 "thinking" 后缀，若包含则覆写 thinking 配置
     override_thinking_from_model_name(&mut payload);
@@ -350,6 +418,9 @@ pub async fn post_messages(
 
     let tool_name_map = conversion_result.tool_name_map;
 
+    // 读取缓存模拟配置
+    let cache_config = state.cache_simulation.read().clone();
+
     if payload.stream {
         // 流式响应
         handle_stream_request(
@@ -359,12 +430,13 @@ pub async fn post_messages(
             input_tokens,
             thinking_enabled,
             tool_name_map,
+            cache_config,
         )
         .await
     } else {
         // 非流式响应：仅在配置开启时提取 thinking 块
         let extract_thinking = state.extract_thinking && thinking_enabled;
-        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map).await
+        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map, cache_config).await
     }
 }
 
@@ -376,6 +448,7 @@ async fn handle_stream_request(
     input_tokens: i32,
     thinking_enabled: bool,
     tool_name_map: std::collections::HashMap<String, String>,
+    cache_config: CacheSimulationConfig,
 ) -> Response {
     // 调用 Kiro API（支持多凭据故障转移）
     let response = match provider.call_api_stream(request_body).await {
@@ -383,8 +456,8 @@ async fn handle_stream_request(
         Err(e) => return map_provider_error(e),
     };
 
-    // 创建流处理上下文
-    let mut ctx = StreamContext::new_with_thinking(model, input_tokens, thinking_enabled, tool_name_map);
+    // 创建流处理上下文（含缓存模拟配置）
+    let mut ctx = StreamContext::new_with_thinking_and_cache(model, input_tokens, thinking_enabled, tool_name_map, cache_config);
 
     // 生成初始事件
     let initial_events = ctx.generate_initial_events();
@@ -512,6 +585,7 @@ async fn handle_non_stream_request(
     input_tokens: i32,
     thinking_enabled: bool,
     tool_name_map: std::collections::HashMap<String, String>,
+    cache_config: CacheSimulationConfig,
 ) -> Response {
     // 调用 Kiro API（支持多凭据故障转移）
     let response = match provider.call_api(request_body).await {
@@ -671,7 +745,8 @@ async fn handle_non_stream_request(
     // 使用从 contextUsageEvent 计算的 input_tokens，如果没有则使用估算值
     let final_input_tokens = context_input_tokens.unwrap_or(input_tokens);
 
-    // 构建 Anthropic 响应
+    // 构建 Anthropic 响应（含缓存模拟）
+    let usage = build_usage_with_cache_simulation(final_input_tokens, output_tokens, &cache_config);
     let response_body = json!({
         "id": format!("msg_{}", Uuid::new_v4().to_string().replace('-', "")),
         "type": "message",
@@ -680,10 +755,7 @@ async fn handle_non_stream_request(
         "model": model,
         "stop_reason": stop_reason,
         "stop_sequence": null,
-        "usage": {
-            "input_tokens": final_input_tokens,
-            "output_tokens": output_tokens
-        }
+        "usage": usage
     });
 
     (StatusCode::OK, Json(response_body)).into_response()
@@ -741,7 +813,9 @@ pub async fn count_tokens(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
-    apply_default_system_prompt_to_count_tokens(&mut payload, &default_system_prompt);
+    let model_system_prompts = state.model_system_prompts.read().clone();
+    let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
+    apply_default_system_prompt_to_count_tokens(&mut payload, &effective_prompt);
 
     let total_tokens = token::count_all_tokens(
         payload.model,
@@ -773,7 +847,9 @@ pub async fn post_messages_cc(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
-    apply_default_system_prompt(&mut payload, &default_system_prompt);
+    let model_system_prompts = state.model_system_prompts.read().clone();
+    let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
+    apply_default_system_prompt(&mut payload, &effective_prompt);
 
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {
@@ -870,6 +946,9 @@ pub async fn post_messages_cc(
 
     let tool_name_map = conversion_result.tool_name_map;
 
+    // 读取缓存模拟配置
+    let cache_config = state.cache_simulation.read().clone();
+
     if payload.stream {
         // 流式响应（缓冲模式）
         handle_stream_request_buffered(
@@ -879,12 +958,13 @@ pub async fn post_messages_cc(
             input_tokens,
             thinking_enabled,
             tool_name_map,
+            cache_config,
         )
         .await
     } else {
         // 非流式响应：仅在配置开启时提取 thinking 块
         let extract_thinking = state.extract_thinking && thinking_enabled;
-        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map).await
+        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map, cache_config).await
     }
 }
 
@@ -899,6 +979,7 @@ async fn handle_stream_request_buffered(
     estimated_input_tokens: i32,
     thinking_enabled: bool,
     tool_name_map: std::collections::HashMap<String, String>,
+    cache_config: CacheSimulationConfig,
 ) -> Response {
     // 调用 Kiro API（支持多凭据故障转移）
     let response = match provider.call_api_stream(request_body).await {
@@ -906,8 +987,8 @@ async fn handle_stream_request_buffered(
         Err(e) => return map_provider_error(e),
     };
 
-    // 创建缓冲流处理上下文
-    let ctx = BufferedStreamContext::new(model, estimated_input_tokens, thinking_enabled, tool_name_map);
+    // 创建缓冲流处理上下文（含缓存模拟配置）
+    let ctx = BufferedStreamContext::new_with_cache(model, estimated_input_tokens, thinking_enabled, tool_name_map, cache_config);
 
     // 创建缓冲 SSE 流
     let stream = create_buffered_sse_stream(response, ctx);

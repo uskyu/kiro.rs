@@ -17,6 +17,51 @@ impl Default for TlsBackend {
     }
 }
 
+/// 缓存模拟配置
+///
+/// 启用后，响应的 usage 中会注入 cache_read_input_tokens 和 cache_creation_input_tokens，
+/// 让下游计费系统（如 new-api）按缓存价格计费，降低下游用户成本。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheSimulationConfig {
+    /// 是否启用缓存模拟
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// 缓存命中比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存读取
+    /// 例如 0.8 表示 80% 的 input_tokens 会被标记为 cache_read_input_tokens
+    #[serde(default = "default_cache_hit_ratio")]
+    pub cache_hit_ratio: f64,
+
+    /// 缓存写入比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存创建
+    /// 通常设为 0，避免 cache_creation 的 1.25x 倍率反而增加费用
+    #[serde(default)]
+    pub cache_creation_ratio: f64,
+
+    /// 最小触发阈值，input_tokens 低于此值时不模拟缓存
+    #[serde(default = "default_min_tokens_to_trigger")]
+    pub min_tokens_to_trigger: i32,
+}
+
+impl Default for CacheSimulationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cache_hit_ratio: default_cache_hit_ratio(),
+            cache_creation_ratio: 0.0,
+            min_tokens_to_trigger: default_min_tokens_to_trigger(),
+        }
+    }
+}
+
+fn default_cache_hit_ratio() -> f64 {
+    0.8
+}
+
+fn default_min_tokens_to_trigger() -> i32 {
+    100
+}
+
 /// KNA 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +147,14 @@ pub struct Config {
     #[serde(default = "default_system_prompt")]
     pub default_system_prompt: String,
 
+    /// 模型级系统提示词映射
+    ///
+    /// 键为模型名称（支持前缀匹配），值为该模型专用的系统提示词。
+    /// 如果请求的模型匹配到某个键，则使用该键对应的提示词替代全局默认提示词。
+    /// 未匹配到任何键时，回退到 default_system_prompt。
+    #[serde(default)]
+    pub model_system_prompts: HashMap<String, String>,
+
     /// 默认端点名称（凭据未显式指定 endpoint 时使用，默认 "ide"）
     #[serde(default = "default_endpoint")]
     pub default_endpoint: String,
@@ -112,6 +165,13 @@ pub struct Config {
     /// 未在此表出现的端点沿用实现内置默认值。
     #[serde(default)]
     pub endpoints: HashMap<String, serde_json::Value>,
+
+    /// 缓存模拟配置
+    ///
+    /// 启用后，响应的 usage 中会注入 cache_read_input_tokens 和 cache_creation_input_tokens，
+    /// 让下游计费系统（如 new-api）按缓存价格计费，降低下游用户成本。
+    #[serde(default)]
+    pub cache_simulation: CacheSimulationConfig,
 
     /// 配置文件路径（运行时元数据，不写入 JSON）
     #[serde(skip)]
@@ -191,8 +251,10 @@ impl Default for Config {
             load_balancing_mode: default_load_balancing_mode(),
             extract_thinking: default_extract_thinking(),
             default_system_prompt: default_system_prompt(),
+            model_system_prompts: HashMap::new(),
             default_endpoint: default_endpoint(),
             endpoints: HashMap::new(),
+            cache_simulation: CacheSimulationConfig::default(),
             config_path: None,
         }
     }

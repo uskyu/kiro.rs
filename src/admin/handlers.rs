@@ -9,7 +9,8 @@ use axum::{
 use super::{
     middleware::AdminState,
     types::{
-        AddCredentialRequest, SetDisabledRequest, SetLoadBalancingModeRequest, SetPriorityRequest,
+        AddCredentialRequest, SetCacheSimulationRequest, SetDisabledRequest,
+        SetLoadBalancingModeRequest, SetModelSystemPromptsRequest, SetPriorityRequest,
         SetSystemPromptRequest, SuccessResponse,
     },
 };
@@ -155,6 +156,44 @@ pub async fn set_system_prompt(
     Json(payload): Json<SetSystemPromptRequest>,
 ) -> impl IntoResponse {
     match state.service.set_system_prompt(payload) {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// GET /api/admin/config/model-system-prompts
+/// 获取模型级系统提示词映射
+pub async fn get_model_system_prompts(State(state): State<AdminState>) -> impl IntoResponse {
+    let response = state.service.get_model_system_prompts();
+    Json(response)
+}
+
+/// PUT /api/admin/config/model-system-prompts
+/// 设置模型级系统提示词映射
+pub async fn set_model_system_prompts(
+    State(state): State<AdminState>,
+    Json(payload): Json<SetModelSystemPromptsRequest>,
+) -> impl IntoResponse {
+    match state.service.set_model_system_prompts(payload) {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// GET /api/admin/config/cache-simulation
+/// 获取缓存模拟配置
+pub async fn get_cache_simulation(State(state): State<AdminState>) -> impl IntoResponse {
+    let response = state.service.get_cache_simulation();
+    Json(response)
+}
+
+/// PUT /api/admin/config/cache-simulation
+/// 设置缓存模拟配置
+pub async fn set_cache_simulation(
+    State(state): State<AdminState>,
+    Json(payload): Json<SetCacheSimulationRequest>,
+) -> impl IntoResponse {
+    match state.service.set_cache_simulation(payload) {
         Ok(response) => Json(response).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }

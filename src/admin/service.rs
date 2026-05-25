@@ -11,13 +11,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::kiro::model::credentials::KiroCredentials;
 use crate::kiro::token_manager::MultiTokenManager;
-use crate::model::config::Config;
+use crate::model::config::{CacheSimulationConfig, Config};
 
 use super::error::AdminServiceError;
 use super::types::{
-    AddCredentialRequest, AddCredentialResponse, BalanceResponse, CredentialStatusItem,
-    CredentialsStatusResponse, LoadBalancingModeResponse, SetLoadBalancingModeRequest,
-    SetSystemPromptRequest, SystemPromptResponse,
+    AddCredentialRequest, AddCredentialResponse, BalanceResponse, CacheSimulationResponse,
+    CredentialStatusItem, CredentialsStatusResponse, LoadBalancingModeResponse,
+    ModelSystemPromptsResponse, SetCacheSimulationRequest, SetLoadBalancingModeRequest,
+    SetModelSystemPromptsRequest, SetSystemPromptRequest, SystemPromptResponse,
 };
 
 /// 余额缓存过期时间（秒），5 分钟
@@ -42,6 +43,10 @@ pub struct AdminService {
     /// 已注册的端点名称集合（用于 add_credential 校验）
     known_endpoints: HashSet<String>,
     default_system_prompt: Arc<RwLock<String>>,
+    /// 模型级系统提示词映射
+    model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
+    /// 缓存模拟配置（可动态修改）
+    cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
 }
 
 impl AdminService {
@@ -49,6 +54,8 @@ impl AdminService {
         token_manager: Arc<MultiTokenManager>,
         known_endpoints: impl IntoIterator<Item = String>,
         default_system_prompt: Arc<RwLock<String>>,
+        model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
+        cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
     ) -> Self {
         let cache_path = token_manager
             .cache_dir()
@@ -62,6 +69,8 @@ impl AdminService {
             cache_path,
             known_endpoints: known_endpoints.into_iter().collect(),
             default_system_prompt,
+            model_system_prompts,
+            cache_simulation,
         }
     }
 
@@ -346,12 +355,128 @@ impl AdminService {
         })
     }
 
+    /// 获取模型级系统提示词映射
+    pub fn get_model_system_prompts(&self) -> ModelSystemPromptsResponse {
+        ModelSystemPromptsResponse {
+            model_system_prompts: self.model_system_prompts.read().clone(),
+        }
+    }
+
+    /// 设置模型级系统提示词映射
+    pub fn set_model_system_prompts(
+        &self,
+        req: SetModelSystemPromptsRequest,
+    ) -> Result<ModelSystemPromptsResponse, AdminServiceError> {
+        let prompts = req.model_system_prompts;
+
+        // 持久化到配置文件
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.model_system_prompts = prompts.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist model system prompts: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        *self.model_system_prompts.write() = prompts.clone();
+
+        Ok(ModelSystemPromptsResponse {
+            model_system_prompts: prompts,
+        })
+    }
+
     /// 强制刷新指定凭据的 Token
     pub async fn force_refresh_token(&self, id: u64) -> Result<(), AdminServiceError> {
         self.token_manager
             .force_refresh_token_for(id)
             .await
             .map_err(|e| self.classify_balance_error(e, id))
+    }
+
+    /// 获取缓存模拟配置
+    pub fn get_cache_simulation(&self) -> CacheSimulationResponse {
+        let config = self.cache_simulation.read().clone();
+        CacheSimulationResponse {
+            enabled: config.enabled,
+            cache_hit_ratio: config.cache_hit_ratio,
+            cache_creation_ratio: config.cache_creation_ratio,
+            min_tokens_to_trigger: config.min_tokens_to_trigger,
+        }
+    }
+
+    /// 设置缓存模拟配置
+    pub fn set_cache_simulation(
+        &self,
+        req: SetCacheSimulationRequest,
+    ) -> Result<CacheSimulationResponse, AdminServiceError> {
+        // 验证参数
+        if req.cache_hit_ratio < 0.0 || req.cache_hit_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_hit_ratio 必须在 0.0 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.cache_creation_ratio < 0.0 || req.cache_creation_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_creation_ratio 必须在 0.0 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.cache_hit_ratio + req.cache_creation_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_hit_ratio + cache_creation_ratio 不能超过 1.0".to_string(),
+            ));
+        }
+
+        let new_config = CacheSimulationConfig {
+            enabled: req.enabled,
+            cache_hit_ratio: req.cache_hit_ratio,
+            cache_creation_ratio: req.cache_creation_ratio,
+            min_tokens_to_trigger: req.min_tokens_to_trigger,
+        };
+
+        // 持久化到配置文件
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.cache_simulation = new_config.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist cache simulation config: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        // 更新内存中的配置
+        *self.cache_simulation.write() = new_config;
+
+        Ok(CacheSimulationResponse {
+            enabled: req.enabled,
+            cache_hit_ratio: req.cache_hit_ratio,
+            cache_creation_ratio: req.cache_creation_ratio,
+            min_tokens_to_trigger: req.min_tokens_to_trigger,
+        })
     }
 
     // ============ 余额缓存持久化 ============

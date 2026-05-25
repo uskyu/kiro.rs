@@ -8,6 +8,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::kiro::model::events::Event;
+use crate::model::config::CacheSimulationConfig;
 
 /// 找到小于等于目标位置的最近有效UTF-8字符边界
 ///
@@ -456,8 +457,7 @@ impl SseStateManager {
     /// 生成最终事件序列
     pub fn generate_final_events(
         &mut self,
-        input_tokens: i32,
-        output_tokens: i32,
+        usage: serde_json::Value,
     ) -> Vec<SseEvent> {
         let mut events = Vec::new();
 
@@ -486,10 +486,7 @@ impl SseStateManager {
                         "stop_reason": self.get_stop_reason(),
                         "stop_sequence": null
                     },
-                    "usage": {
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens
-                    }
+                    "usage": usage
                 }),
             ));
         }
@@ -542,6 +539,8 @@ pub struct StreamContext {
     /// 是否需要剥离 thinking 内容开头的换行符
     /// 模型输出 `<thinking>\n` 时，`\n` 可能与标签在同一 chunk 或下一 chunk
     strip_thinking_leading_newline: bool,
+    /// 缓存模拟配置
+    pub cache_config: CacheSimulationConfig,
 }
 
 impl StreamContext {
@@ -551,6 +550,17 @@ impl StreamContext {
         input_tokens: i32,
         thinking_enabled: bool,
         tool_name_map: HashMap<String, String>,
+    ) -> Self {
+        Self::new_with_thinking_and_cache(model, input_tokens, thinking_enabled, tool_name_map, CacheSimulationConfig::default())
+    }
+
+    /// 创建启用thinking和缓存模拟的StreamContext
+    pub fn new_with_thinking_and_cache(
+        model: impl Into<String>,
+        input_tokens: i32,
+        thinking_enabled: bool,
+        tool_name_map: HashMap<String, String>,
+        cache_config: CacheSimulationConfig,
     ) -> Self {
         Self {
             state_manager: SseStateManager::new(),
@@ -568,11 +578,13 @@ impl StreamContext {
             thinking_block_index: None,
             text_block_index: None,
             strip_thinking_leading_newline: false,
+            cache_config,
         }
     }
 
     /// 生成 message_start 事件
     pub fn create_message_start_event(&self) -> serde_json::Value {
+        let usage = self.build_cache_usage(self.input_tokens, 1);
         json!({
             "type": "message_start",
             "message": {
@@ -583,11 +595,28 @@ impl StreamContext {
                 "model": self.model,
                 "stop_reason": null,
                 "stop_sequence": null,
-                "usage": {
-                    "input_tokens": self.input_tokens,
-                    "output_tokens": 1
-                }
+                "usage": usage
             }
+        })
+    }
+
+    /// 根据缓存模拟配置构造 usage JSON
+    fn build_cache_usage(&self, input_tokens: i32, output_tokens: i32) -> serde_json::Value {
+        if !self.cache_config.enabled || input_tokens < self.cache_config.min_tokens_to_trigger {
+            return json!({
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            });
+        }
+
+        let cache_read = (input_tokens as f64 * self.cache_config.cache_hit_ratio) as i32;
+        let cache_creation = (input_tokens as f64 * self.cache_config.cache_creation_ratio) as i32;
+
+        json!({
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_creation_input_tokens": cache_creation,
+            "cache_read_input_tokens": cache_read
         })
     }
 
@@ -1120,10 +1149,11 @@ impl StreamContext {
         // 使用从 contextUsageEvent 计算的 input_tokens，如果没有则使用估算值
         let final_input_tokens = self.context_input_tokens.unwrap_or(self.input_tokens);
 
-        // 生成最终事件
+        // 生成最终事件（含缓存模拟）
+        let final_usage = self.build_cache_usage(final_input_tokens, self.output_tokens);
         events.extend(
             self.state_manager
-                .generate_final_events(final_input_tokens, self.output_tokens),
+                .generate_final_events(final_usage),
         );
         events
     }
@@ -1158,8 +1188,19 @@ impl BufferedStreamContext {
         thinking_enabled: bool,
         tool_name_map: HashMap<String, String>,
     ) -> Self {
+        Self::new_with_cache(model, estimated_input_tokens, thinking_enabled, tool_name_map, CacheSimulationConfig::default())
+    }
+
+    /// 创建带缓存模拟配置的缓冲流上下文
+    pub fn new_with_cache(
+        model: impl Into<String>,
+        estimated_input_tokens: i32,
+        thinking_enabled: bool,
+        tool_name_map: HashMap<String, String>,
+        cache_config: CacheSimulationConfig,
+    ) -> Self {
         let inner =
-            StreamContext::new_with_thinking(model, estimated_input_tokens, thinking_enabled, tool_name_map);
+            StreamContext::new_with_thinking_and_cache(model, estimated_input_tokens, thinking_enabled, tool_name_map, cache_config);
         Self {
             inner,
             event_buffer: Vec::new(),
@@ -1208,13 +1249,14 @@ impl BufferedStreamContext {
             .context_input_tokens
             .unwrap_or(self.estimated_input_tokens);
 
-        // 更正 message_start 事件中的 input_tokens
+        // 构造带缓存模拟的 usage
+        let corrected_usage = self.inner.build_cache_usage(final_input_tokens, 1);
+
+        // 更正 message_start 事件中的 usage（含缓存字段）
         for event in &mut self.event_buffer {
             if event.event == "message_start" {
                 if let Some(message) = event.data.get_mut("message") {
-                    if let Some(usage) = message.get_mut("usage") {
-                        usage["input_tokens"] = serde_json::json!(final_input_tokens);
-                    }
+                    message["usage"] = corrected_usage.clone();
                 }
             }
         }

@@ -71,6 +71,30 @@ export interface SetSystemPromptRequest {
   defaultSystemPrompt: string
 }
 
+// 缓存模拟配置
+export interface CacheSimulationResponse {
+  enabled: boolean
+  cacheHitRatio: number
+  cacheCreationRatio: number
+  minTokensToTrigger: number
+}
+
+export interface SetCacheSimulationRequest {
+  enabled: boolean
+  cacheHitRatio: number
+  cacheCreationRatio: number
+  minTokensToTrigger: number
+}
+
+// 模型级系统提示词映射
+export interface ModelSystemPromptsResponse {
+  modelSystemPrompts: Record<string, string>
+}
+
+export interface SetModelSystemPromptsRequest {
+  modelSystemPrompts: Record<string, string>
+}
+
 // 添加凭据请求
 export interface AddCredentialRequest {
   refreshToken?: string

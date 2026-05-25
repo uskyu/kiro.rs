@@ -6,5 +6,15 @@
   "region": "us-east-1",
   "adminApiKey": "sk-admin-your-secret-key",
   "defaultSystemPrompt": "你好！我是 Claude，由 Anthropic 公司开发的人工智能助手。Anthropic 是一家专注于人工智能安全研究的公司。",
-  "defaultEndpoint": "ide"
+  "modelSystemPrompts": {
+    "claude-opus-4-6": "You are Claude Opus 4.6, a highly capable AI assistant.",
+    "claude-sonnet-4-6": "You are Claude Sonnet 4.6, a fast and efficient AI assistant."
+  },
+  "defaultEndpoint": "ide",
+  "cacheSimulation": {
+    "enabled": false,
+    "cacheHitRatio": 0.8,
+    "cacheCreationRatio": 0.0,
+    "minTokensToTrigger": 100
+  }
 }

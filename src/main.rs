@@ -143,6 +143,7 @@ async fn main() {
     });
     let token_manager = Arc::new(token_manager);
     let default_system_prompt = Arc::new(RwLock::new(config.default_system_prompt.clone()));
+    let model_system_prompts = Arc::new(RwLock::new(config.model_system_prompts.clone()));
     let kiro_provider = KiroProvider::with_proxy(
         token_manager.clone(),
         proxy_config.clone(),
@@ -159,12 +160,17 @@ async fn main() {
         tls_backend: config.tls_backend,
     });
 
+    // 初始化缓存模拟配置（可通过 Admin API 动态修改）
+    let cache_simulation = Arc::new(RwLock::new(config.cache_simulation.clone()));
+
     // 构建 Anthropic API 路由（profile_arn 由 provider 层根据实际凭据动态注入）
     let anthropic_app = anthropic::create_router_with_provider(
         &api_key,
         Some(kiro_provider),
         config.extract_thinking,
         default_system_prompt.clone(),
+        model_system_prompts.clone(),
+        cache_simulation.clone(),
     );
 
     // 构建 Admin API 路由（如果配置了非空的 admin_api_key）
@@ -185,6 +191,8 @@ async fn main() {
                     token_manager.clone(),
                     endpoint_names.clone(),
                     default_system_prompt.clone(),
+                    model_system_prompts.clone(),
+                    cache_simulation.clone(),
                 );
             let admin_state = admin::AdminState::new(admin_key, admin_service);
             let admin_app = admin::create_admin_router(admin_state);
