@@ -77,6 +77,13 @@ export interface CacheSimulationResponse {
   cacheHitRatio: number
   cacheCreationRatio: number
   minTokensToTrigger: number
+  inputTokensMultiplier: number
+  outputTokensMultiplier: number
+  forceOverride: boolean
+  forceInputTokens: number
+  forceOutputTokens: number
+  forceCacheReadTokens: number
+  forceCacheCreationTokens: number
 }
 
 export interface SetCacheSimulationRequest {
@@ -84,6 +91,13 @@ export interface SetCacheSimulationRequest {
   cacheHitRatio: number
   cacheCreationRatio: number
   minTokensToTrigger: number
+  inputTokensMultiplier: number
+  outputTokensMultiplier: number
+  forceOverride: boolean
+  forceInputTokens: number
+  forceOutputTokens: number
+  forceCacheReadTokens: number
+  forceCacheCreationTokens: number
 }
 
 // 模型级系统提示词映射

@@ -414,6 +414,13 @@ impl AdminService {
             cache_hit_ratio: config.cache_hit_ratio,
             cache_creation_ratio: config.cache_creation_ratio,
             min_tokens_to_trigger: config.min_tokens_to_trigger,
+            input_tokens_multiplier: config.input_tokens_multiplier,
+            output_tokens_multiplier: config.output_tokens_multiplier,
+            force_override: config.force_override,
+            force_input_tokens: config.force_input_tokens,
+            force_output_tokens: config.force_output_tokens,
+            force_cache_read_tokens: config.force_cache_read_tokens,
+            force_cache_creation_tokens: config.force_cache_creation_tokens,
         }
     }
 
@@ -438,12 +445,41 @@ impl AdminService {
                 "cache_hit_ratio + cache_creation_ratio 不能超过 1.0".to_string(),
             ));
         }
+        if req.input_tokens_multiplier < 0.01 || req.input_tokens_multiplier > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "input_tokens_multiplier 必须在 0.01 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.output_tokens_multiplier < 0.01 || req.output_tokens_multiplier > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "output_tokens_multiplier 必须在 0.01 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.force_override {
+            if req.force_input_tokens < 0 || req.force_output_tokens < 0 {
+                return Err(AdminServiceError::InvalidCredential(
+                    "强制覆盖的 token 值不能为负数".to_string(),
+                ));
+            }
+            if req.force_cache_read_tokens < 0 || req.force_cache_creation_tokens < 0 {
+                return Err(AdminServiceError::InvalidCredential(
+                    "强制覆盖的缓存 token 值不能为负数".to_string(),
+                ));
+            }
+        }
 
         let new_config = CacheSimulationConfig {
             enabled: req.enabled,
             cache_hit_ratio: req.cache_hit_ratio,
             cache_creation_ratio: req.cache_creation_ratio,
             min_tokens_to_trigger: req.min_tokens_to_trigger,
+            input_tokens_multiplier: req.input_tokens_multiplier,
+            output_tokens_multiplier: req.output_tokens_multiplier,
+            force_override: req.force_override,
+            force_input_tokens: req.force_input_tokens,
+            force_output_tokens: req.force_output_tokens,
+            force_cache_read_tokens: req.force_cache_read_tokens,
+            force_cache_creation_tokens: req.force_cache_creation_tokens,
         };
 
         // 持久化到配置文件
@@ -476,6 +512,13 @@ impl AdminService {
             cache_hit_ratio: req.cache_hit_ratio,
             cache_creation_ratio: req.cache_creation_ratio,
             min_tokens_to_trigger: req.min_tokens_to_trigger,
+            input_tokens_multiplier: req.input_tokens_multiplier,
+            output_tokens_multiplier: req.output_tokens_multiplier,
+            force_override: req.force_override,
+            force_input_tokens: req.force_input_tokens,
+            force_output_tokens: req.force_output_tokens,
+            force_cache_read_tokens: req.force_cache_read_tokens,
+            force_cache_creation_tokens: req.force_cache_creation_tokens,
         })
     }
 

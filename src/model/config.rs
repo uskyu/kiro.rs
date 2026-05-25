@@ -19,8 +19,11 @@ impl Default for TlsBackend {
 
 /// 缓存模拟配置
 ///
-/// 启用后，响应的 usage 中会注入 cache_read_input_tokens 和 cache_creation_input_tokens，
-/// 让下游计费系统（如 new-api）按缓存价格计费，降低下游用户成本。
+/// 两种模式：
+/// 1. 倍率模式（默认）：按比例缩减 input/output tokens，再叠加缓存模拟
+/// 2. 强制覆盖模式：勾选后直接写死固定的 token 数值，无视实际用量
+///
+/// 两种模式互斥，强制覆盖优先级更高。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheSimulationConfig {
@@ -29,18 +32,48 @@ pub struct CacheSimulationConfig {
     pub enabled: bool,
 
     /// 缓存命中比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存读取
-    /// 例如 0.8 表示 80% 的 input_tokens 会被标记为 cache_read_input_tokens
     #[serde(default = "default_cache_hit_ratio")]
     pub cache_hit_ratio: f64,
 
     /// 缓存写入比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存创建
-    /// 通常设为 0，避免 cache_creation 的 1.25x 倍率反而增加费用
     #[serde(default)]
     pub cache_creation_ratio: f64,
 
     /// 最小触发阈值，input_tokens 低于此值时不模拟缓存
     #[serde(default = "default_min_tokens_to_trigger")]
     pub min_tokens_to_trigger: i32,
+
+    /// Input token 倍率（0.01-1.0），报告给下游的 input_tokens = 实际值 × 此倍率
+    /// 默认 1.0（不缩减）
+    #[serde(default = "default_multiplier")]
+    pub input_tokens_multiplier: f64,
+
+    /// Output token 倍率（0.01-1.0），报告给下游的 output_tokens = 实际值 × 此倍率
+    /// 默认 1.0（不缩减）
+    #[serde(default = "default_multiplier")]
+    pub output_tokens_multiplier: f64,
+
+    /// ===== 强制覆盖模式 =====
+
+    /// 是否启用强制覆盖（启用后忽略倍率计算，直接使用下面的固定值）
+    #[serde(default)]
+    pub force_override: bool,
+
+    /// 强制覆盖：报告的 input_tokens 固定值
+    #[serde(default)]
+    pub force_input_tokens: i32,
+
+    /// 强制覆盖：报告的 output_tokens 固定值
+    #[serde(default)]
+    pub force_output_tokens: i32,
+
+    /// 强制覆盖：报告的 cache_read_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_read_tokens: i32,
+
+    /// 强制覆盖：报告的 cache_creation_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_creation_tokens: i32,
 }
 
 impl Default for CacheSimulationConfig {
@@ -50,6 +83,13 @@ impl Default for CacheSimulationConfig {
             cache_hit_ratio: default_cache_hit_ratio(),
             cache_creation_ratio: 0.0,
             min_tokens_to_trigger: default_min_tokens_to_trigger(),
+            input_tokens_multiplier: 1.0,
+            output_tokens_multiplier: 1.0,
+            force_override: false,
+            force_input_tokens: 0,
+            force_output_tokens: 0,
+            force_cache_read_tokens: 0,
+            force_cache_creation_tokens: 0,
         }
     }
 }
@@ -60,6 +100,10 @@ fn default_cache_hit_ratio() -> f64 {
 
 fn default_min_tokens_to_trigger() -> i32 {
     100
+}
+
+fn default_multiplier() -> f64 {
+    1.0
 }
 
 /// KNA 应用配置

@@ -242,6 +242,20 @@ pub struct CacheSimulationResponse {
     pub cache_creation_ratio: f64,
     /// 最小触发阈值
     pub min_tokens_to_trigger: i32,
+    /// Input token 倍率（0.01-1.0）
+    pub input_tokens_multiplier: f64,
+    /// Output token 倍率（0.01-1.0）
+    pub output_tokens_multiplier: f64,
+    /// 是否启用强制覆盖模式
+    pub force_override: bool,
+    /// 强制覆盖：input_tokens 固定值
+    pub force_input_tokens: i32,
+    /// 强制覆盖：output_tokens 固定值
+    pub force_output_tokens: i32,
+    /// 强制覆盖：cache_read_input_tokens 固定值
+    pub force_cache_read_tokens: i32,
+    /// 强制覆盖：cache_creation_input_tokens 固定值
+    pub force_cache_creation_tokens: i32,
 }
 
 /// 设置缓存模拟配置请求
@@ -256,6 +270,31 @@ pub struct SetCacheSimulationRequest {
     pub cache_creation_ratio: f64,
     /// 最小触发阈值
     pub min_tokens_to_trigger: i32,
+    /// Input token 倍率（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub input_tokens_multiplier: f64,
+    /// Output token 倍率（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub output_tokens_multiplier: f64,
+    /// 是否启用强制覆盖模式
+    #[serde(default)]
+    pub force_override: bool,
+    /// 强制覆盖：input_tokens 固定值
+    #[serde(default)]
+    pub force_input_tokens: i32,
+    /// 强制覆盖：output_tokens 固定值
+    #[serde(default)]
+    pub force_output_tokens: i32,
+    /// 强制覆盖：cache_read_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_read_tokens: i32,
+    /// 强制覆盖：cache_creation_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_creation_tokens: i32,
+}
+
+fn default_multiplier() -> f64 {
+    1.0
 }
 
 // ============ 通用响应 ============

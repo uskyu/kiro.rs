@@ -15,6 +15,13 @@
     "enabled": false,
     "cacheHitRatio": 0.8,
     "cacheCreationRatio": 0.0,
-    "minTokensToTrigger": 100
+    "minTokensToTrigger": 100,
+    "inputTokensMultiplier": 1.0,
+    "outputTokensMultiplier": 1.0,
+    "forceOverride": false,
+    "forceInputTokens": 0,
+    "forceOutputTokens": 0,
+    "forceCacheReadTokens": 0,
+    "forceCacheCreationTokens": 0
   }
 }
