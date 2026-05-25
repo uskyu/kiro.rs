@@ -613,22 +613,20 @@ impl StreamContext {
             });
         }
 
-        // 强制覆盖模式
+        // 强制覆盖模式：只覆盖填了值(>0)的字段，其余保留实际值
         if self.cache_config.force_override {
-            let fi = self.cache_config.force_input_tokens.max(1);
-            let fo = self.cache_config.force_output_tokens.max(1);
-            let fcr = self.cache_config.force_cache_read_tokens;
-            let fcc = self.cache_config.force_cache_creation_tokens;
+            let fi = if self.cache_config.force_input_tokens > 0 { self.cache_config.force_input_tokens } else { input_tokens };
+            let fo = if self.cache_config.force_output_tokens > 0 { self.cache_config.force_output_tokens } else { output_tokens };
 
             let mut usage = json!({
                 "input_tokens": fi,
                 "output_tokens": fo
             });
-            if fcr > 0 {
-                usage["cache_read_input_tokens"] = json!(fcr);
+            if self.cache_config.force_cache_read_tokens > 0 {
+                usage["cache_read_input_tokens"] = json!(self.cache_config.force_cache_read_tokens);
             }
-            if fcc > 0 {
-                usage["cache_creation_input_tokens"] = json!(fcc);
+            if self.cache_config.force_cache_creation_tokens > 0 {
+                usage["cache_creation_input_tokens"] = json!(self.cache_config.force_cache_creation_tokens);
             }
             return usage;
         }

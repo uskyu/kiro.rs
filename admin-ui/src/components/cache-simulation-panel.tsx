@@ -198,8 +198,8 @@ export function CacheSimulationPanel() {
                   </div>
                   <div className="col-span-2">
                     <p className="text-xs text-red-600 dark:text-red-400">
-                      ⚠️ 强制覆盖模式下，无论实际消耗多少 token，都只报告上面的固定值。
-                      建议：input=1, output=1, cache_read=0, cache_creation=0 → 几乎零计费
+                      ⚠️ 强制覆盖模式：填 0 = 不覆盖该字段（保留实际值），填 &gt;0 = 强制写死为该值。
+                      只想改一两个字段就只填那几个，其余留 0。
                     </p>
                   </div>
                 </div>

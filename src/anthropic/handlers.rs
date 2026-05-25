@@ -48,22 +48,20 @@ fn build_usage_with_cache_simulation(
         });
     }
 
-    // 强制覆盖模式：直接写死固定值
+    // 强制覆盖模式：只覆盖填了值(>0)的字段，其余保留实际值
     if cache_config.force_override {
-        let fi = cache_config.force_input_tokens.max(1);
-        let fo = cache_config.force_output_tokens.max(1);
-        let fcr = cache_config.force_cache_read_tokens;
-        let fcc = cache_config.force_cache_creation_tokens;
+        let fi = if cache_config.force_input_tokens > 0 { cache_config.force_input_tokens } else { input_tokens };
+        let fo = if cache_config.force_output_tokens > 0 { cache_config.force_output_tokens } else { output_tokens };
 
         let mut usage = json!({
             "input_tokens": fi,
             "output_tokens": fo
         });
-        if fcr > 0 {
-            usage["cache_read_input_tokens"] = json!(fcr);
+        if cache_config.force_cache_read_tokens > 0 {
+            usage["cache_read_input_tokens"] = json!(cache_config.force_cache_read_tokens);
         }
-        if fcc > 0 {
-            usage["cache_creation_input_tokens"] = json!(fcc);
+        if cache_config.force_cache_creation_tokens > 0 {
+            usage["cache_creation_input_tokens"] = json!(cache_config.force_cache_creation_tokens);
         }
         return usage;
     }
