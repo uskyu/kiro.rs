@@ -602,7 +602,7 @@ impl StreamContext {
 
     /// 根据缓存模拟配置构造 usage JSON
     ///
-    /// 强制覆盖 + 倍率混合：字段值>0用固定值，=0走倍率缩减
+    /// 混合模式：强制覆盖 > 随机倍率 > 固定倍率 > 缓存模拟
     fn build_cache_usage(&self, input_tokens: i32, output_tokens: i32) -> serde_json::Value {
         if !self.cache_config.enabled || input_tokens < self.cache_config.min_tokens_to_trigger {
             return json!({
@@ -611,20 +611,27 @@ impl StreamContext {
             });
         }
 
-        // 计算最终报告值：强制覆盖(>0)优先，否则走倍率
+        // 计算 input 最终报告值
         let reported_input = if self.cache_config.force_input_tokens > 0 {
             self.cache_config.force_input_tokens
+        } else if self.cache_config.random_multiplier {
+            let ratio = Self::random_in_range(self.cache_config.input_multiplier_min, self.cache_config.input_multiplier_max);
+            (input_tokens as f64 * ratio).max(1.0) as i32
         } else {
             (input_tokens as f64 * self.cache_config.input_tokens_multiplier).max(1.0) as i32
         };
 
+        // 计算 output 最终报告值
         let reported_output = if self.cache_config.force_output_tokens > 0 {
             self.cache_config.force_output_tokens
+        } else if self.cache_config.random_multiplier {
+            let ratio = Self::random_in_range(self.cache_config.output_multiplier_min, self.cache_config.output_multiplier_max);
+            (output_tokens as f64 * ratio).max(1.0) as i32
         } else {
             (output_tokens as f64 * self.cache_config.output_tokens_multiplier).max(1.0) as i32
         };
 
-        // 缓存字段：强制覆盖(>0)优先，否则按比例计算
+        // 缓存字段
         let cache_read = if self.cache_config.force_cache_read_tokens > 0 {
             self.cache_config.force_cache_read_tokens
         } else {
@@ -648,6 +655,15 @@ impl StreamContext {
             usage["cache_creation_input_tokens"] = json!(cache_creation);
         }
         usage
+    }
+
+    /// 在 [min, max] 范围内生成随机 f64
+    fn random_in_range(min: f64, max: f64) -> f64 {
+        if min >= max {
+            return min;
+        }
+        let range = max - min;
+        min + fastrand::f64() * range
     }
 
     /// 生成初始事件序列 (message_start + 文本块 start)

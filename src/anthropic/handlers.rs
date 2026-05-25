@@ -33,9 +33,10 @@ use super::websearch;
 
 /// 根据缓存模拟配置，构造包含缓存字段的 usage JSON
 ///
-/// 强制覆盖 + 倍率混合模式：
-/// - 字段值 > 0：使用强制覆盖的固定值
-/// - 字段值 = 0：走倍率缩减（乘以 multiplier）
+/// 混合模式：
+/// - 强制覆盖(>0)：直接写死
+/// - 随机倍率(random_multiplier=true)：在 [min, max] 区间随机
+/// - 固定倍率：按 multiplier 缩减
 /// - 缓存模拟：在最终 input_tokens 基础上叠加
 fn build_usage_with_cache_simulation(
     input_tokens: i32,
@@ -48,6 +49,65 @@ fn build_usage_with_cache_simulation(
             "output_tokens": output_tokens
         });
     }
+
+    // 计算 input 最终报告值
+    let reported_input = if cache_config.force_input_tokens > 0 {
+        cache_config.force_input_tokens
+    } else if cache_config.random_multiplier {
+        let ratio = random_in_range(cache_config.input_multiplier_min, cache_config.input_multiplier_max);
+        (input_tokens as f64 * ratio).max(1.0) as i32
+    } else {
+        (input_tokens as f64 * cache_config.input_tokens_multiplier).max(1.0) as i32
+    };
+
+    // 计算 output 最终报告值
+    let reported_output = if cache_config.force_output_tokens > 0 {
+        cache_config.force_output_tokens
+    } else if cache_config.random_multiplier {
+        let ratio = random_in_range(cache_config.output_multiplier_min, cache_config.output_multiplier_max);
+        (output_tokens as f64 * ratio).max(1.0) as i32
+    } else {
+        (output_tokens as f64 * cache_config.output_tokens_multiplier).max(1.0) as i32
+    };
+
+    // 缓存字段
+    let cache_read = if cache_config.force_cache_read_tokens > 0 {
+        cache_config.force_cache_read_tokens
+    } else if input_tokens >= cache_config.min_tokens_to_trigger {
+        (reported_input as f64 * cache_config.cache_hit_ratio) as i32
+    } else {
+        0
+    };
+
+    let cache_creation = if cache_config.force_cache_creation_tokens > 0 {
+        cache_config.force_cache_creation_tokens
+    } else if input_tokens >= cache_config.min_tokens_to_trigger {
+        (reported_input as f64 * cache_config.cache_creation_ratio) as i32
+    } else {
+        0
+    };
+
+    let mut usage = json!({
+        "input_tokens": reported_input,
+        "output_tokens": reported_output
+    });
+    if cache_read > 0 {
+        usage["cache_read_input_tokens"] = json!(cache_read);
+    }
+    if cache_creation > 0 {
+        usage["cache_creation_input_tokens"] = json!(cache_creation);
+    }
+    usage
+}
+
+/// 在 [min, max] 范围内生成随机 f64
+fn random_in_range(min: f64, max: f64) -> f64 {
+    if min >= max {
+        return min;
+    }
+    let range = max - min;
+    min + fastrand::f64() * range
+}
 
     // 计算最终报告值：强制覆盖(>0)优先，否则走倍率
     let reported_input = if cache_config.force_input_tokens > 0 {

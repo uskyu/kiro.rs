@@ -246,6 +246,16 @@ pub struct CacheSimulationResponse {
     pub input_tokens_multiplier: f64,
     /// Output token 倍率（0.01-1.0）
     pub output_tokens_multiplier: f64,
+    /// 是否启用随机倍率
+    pub random_multiplier: bool,
+    /// Input 随机倍率下限
+    pub input_multiplier_min: f64,
+    /// Input 随机倍率上限
+    pub input_multiplier_max: f64,
+    /// Output 随机倍率下限
+    pub output_multiplier_min: f64,
+    /// Output 随机倍率上限
+    pub output_multiplier_max: f64,
     /// 是否启用强制覆盖模式
     pub force_override: bool,
     /// 强制覆盖：input_tokens 固定值
@@ -276,6 +286,21 @@ pub struct SetCacheSimulationRequest {
     /// Output token 倍率（0.01-1.0）
     #[serde(default = "default_multiplier")]
     pub output_tokens_multiplier: f64,
+    /// 是否启用随机倍率
+    #[serde(default)]
+    pub random_multiplier: bool,
+    /// Input 随机倍率下限
+    #[serde(default = "default_random_min")]
+    pub input_multiplier_min: f64,
+    /// Input 随机倍率上限
+    #[serde(default = "default_multiplier")]
+    pub input_multiplier_max: f64,
+    /// Output 随机倍率下限
+    #[serde(default = "default_random_min")]
+    pub output_multiplier_min: f64,
+    /// Output 随机倍率上限
+    #[serde(default = "default_multiplier")]
+    pub output_multiplier_max: f64,
     /// 是否启用强制覆盖模式
     #[serde(default)]
     pub force_override: bool,
@@ -295,6 +320,10 @@ pub struct SetCacheSimulationRequest {
 
 fn default_multiplier() -> f64 {
     1.0
+}
+
+fn default_random_min() -> f64 {
+    0.05
 }
 
 // ============ 通用响应 ============

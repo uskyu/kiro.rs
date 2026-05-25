@@ -416,6 +416,11 @@ impl AdminService {
             min_tokens_to_trigger: config.min_tokens_to_trigger,
             input_tokens_multiplier: config.input_tokens_multiplier,
             output_tokens_multiplier: config.output_tokens_multiplier,
+            random_multiplier: config.random_multiplier,
+            input_multiplier_min: config.input_multiplier_min,
+            input_multiplier_max: config.input_multiplier_max,
+            output_multiplier_min: config.output_multiplier_min,
+            output_multiplier_max: config.output_multiplier_max,
             force_override: config.force_override,
             force_input_tokens: config.force_input_tokens,
             force_output_tokens: config.force_output_tokens,
@@ -467,6 +472,32 @@ impl AdminService {
                 ));
             }
         }
+        if req.random_multiplier {
+            if req.input_multiplier_min < 0.01 || req.input_multiplier_min > 1.0
+                || req.input_multiplier_max < 0.01 || req.input_multiplier_max > 1.0
+            {
+                return Err(AdminServiceError::InvalidCredential(
+                    "随机倍率区间必须在 0.01 到 1.0 之间".to_string(),
+                ));
+            }
+            if req.input_multiplier_min > req.input_multiplier_max {
+                return Err(AdminServiceError::InvalidCredential(
+                    "input 随机倍率下限不能大于上限".to_string(),
+                ));
+            }
+            if req.output_multiplier_min < 0.01 || req.output_multiplier_min > 1.0
+                || req.output_multiplier_max < 0.01 || req.output_multiplier_max > 1.0
+            {
+                return Err(AdminServiceError::InvalidCredential(
+                    "随机倍率区间必须在 0.01 到 1.0 之间".to_string(),
+                ));
+            }
+            if req.output_multiplier_min > req.output_multiplier_max {
+                return Err(AdminServiceError::InvalidCredential(
+                    "output 随机倍率下限不能大于上限".to_string(),
+                ));
+            }
+        }
 
         let new_config = CacheSimulationConfig {
             enabled: req.enabled,
@@ -475,6 +506,11 @@ impl AdminService {
             min_tokens_to_trigger: req.min_tokens_to_trigger,
             input_tokens_multiplier: req.input_tokens_multiplier,
             output_tokens_multiplier: req.output_tokens_multiplier,
+            random_multiplier: req.random_multiplier,
+            input_multiplier_min: req.input_multiplier_min,
+            input_multiplier_max: req.input_multiplier_max,
+            output_multiplier_min: req.output_multiplier_min,
+            output_multiplier_max: req.output_multiplier_max,
             force_override: req.force_override,
             force_input_tokens: req.force_input_tokens,
             force_output_tokens: req.force_output_tokens,
@@ -514,6 +550,11 @@ impl AdminService {
             min_tokens_to_trigger: req.min_tokens_to_trigger,
             input_tokens_multiplier: req.input_tokens_multiplier,
             output_tokens_multiplier: req.output_tokens_multiplier,
+            random_multiplier: req.random_multiplier,
+            input_multiplier_min: req.input_multiplier_min,
+            input_multiplier_max: req.input_multiplier_max,
+            output_multiplier_min: req.output_multiplier_min,
+            output_multiplier_max: req.output_multiplier_max,
             force_override: req.force_override,
             force_input_tokens: req.force_input_tokens,
             force_output_tokens: req.force_output_tokens,

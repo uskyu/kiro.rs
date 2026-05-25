@@ -19,11 +19,10 @@ impl Default for TlsBackend {
 
 /// 缓存模拟配置
 ///
-/// 两种模式：
-/// 1. 倍率模式（默认）：按比例缩减 input/output tokens，再叠加缓存模拟
-/// 2. 强制覆盖模式：勾选后直接写死固定的 token 数值，无视实际用量
-///
-/// 两种模式互斥，强制覆盖优先级更高。
+/// 三种可控方式（可混合）：
+/// 1. 强制覆盖：字段值>0直接写死
+/// 2. 固定倍率：字段值=0时按 multiplier 缩减
+/// 3. 随机倍率区间：启用后在 [min, max] 范围内每次请求随机取值，更自然
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheSimulationConfig {
@@ -43,35 +42,57 @@ pub struct CacheSimulationConfig {
     #[serde(default = "default_min_tokens_to_trigger")]
     pub min_tokens_to_trigger: i32,
 
-    /// Input token 倍率（0.01-1.0），报告给下游的 input_tokens = 实际值 × 此倍率
-    /// 默认 1.0（不缩减）
+    /// Input token 固定倍率（0.01-1.0）
+    /// 当随机模式关闭时使用此固定值
     #[serde(default = "default_multiplier")]
     pub input_tokens_multiplier: f64,
 
-    /// Output token 倍率（0.01-1.0），报告给下游的 output_tokens = 实际值 × 此倍率
-    /// 默认 1.0（不缩减）
+    /// Output token 固定倍率（0.01-1.0）
+    /// 当随机模式关闭时使用此固定值
     #[serde(default = "default_multiplier")]
     pub output_tokens_multiplier: f64,
 
-    /// ===== 强制覆盖模式 =====
+    /// ===== 随机倍率区间 =====
 
-    /// 是否启用强制覆盖（启用后忽略倍率计算，直接使用下面的固定值）
+    /// 是否启用随机倍率（启用后 multiplier 字段被忽略，改用区间随机）
+    #[serde(default)]
+    pub random_multiplier: bool,
+
+    /// Input token 随机倍率下限（0.01-1.0）
+    #[serde(default = "default_random_min")]
+    pub input_multiplier_min: f64,
+
+    /// Input token 随机倍率上限（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub input_multiplier_max: f64,
+
+    /// Output token 随机倍率下限（0.01-1.0）
+    #[serde(default = "default_random_min")]
+    pub output_multiplier_min: f64,
+
+    /// Output token 随机倍率上限（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub output_multiplier_max: f64,
+
+    /// ===== 强制覆盖 =====
+
+    /// 是否启用强制覆盖（保留用于 UI 展示分区）
     #[serde(default)]
     pub force_override: bool,
 
-    /// 强制覆盖：报告的 input_tokens 固定值
+    /// 强制覆盖：报告的 input_tokens 固定值（0=不覆盖）
     #[serde(default)]
     pub force_input_tokens: i32,
 
-    /// 强制覆盖：报告的 output_tokens 固定值
+    /// 强制覆盖：报告的 output_tokens 固定值（0=不覆盖）
     #[serde(default)]
     pub force_output_tokens: i32,
 
-    /// 强制覆盖：报告的 cache_read_input_tokens 固定值
+    /// 强制覆盖：报告的 cache_read_input_tokens 固定值（0=不覆盖）
     #[serde(default)]
     pub force_cache_read_tokens: i32,
 
-    /// 强制覆盖：报告的 cache_creation_input_tokens 固定值
+    /// 强制覆盖：报告的 cache_creation_input_tokens 固定值（0=不覆盖）
     #[serde(default)]
     pub force_cache_creation_tokens: i32,
 }
@@ -85,6 +106,11 @@ impl Default for CacheSimulationConfig {
             min_tokens_to_trigger: default_min_tokens_to_trigger(),
             input_tokens_multiplier: 1.0,
             output_tokens_multiplier: 1.0,
+            random_multiplier: false,
+            input_multiplier_min: default_random_min(),
+            input_multiplier_max: 1.0,
+            output_multiplier_min: default_random_min(),
+            output_multiplier_max: 1.0,
             force_override: false,
             force_input_tokens: 0,
             force_output_tokens: 0,
@@ -104,6 +130,10 @@ fn default_min_tokens_to_trigger() -> i32 {
 
 fn default_multiplier() -> f64 {
     1.0
+}
+
+fn default_random_min() -> f64 {
+    0.05
 }
 
 /// KNA 应用配置

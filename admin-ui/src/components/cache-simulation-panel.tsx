@@ -16,6 +16,11 @@ export function CacheSimulationPanel() {
   const [minTokensToTrigger, setMinTokensToTrigger] = useState(100)
   const [inputTokensMultiplier, setInputTokensMultiplier] = useState(1.0)
   const [outputTokensMultiplier, setOutputTokensMultiplier] = useState(1.0)
+  const [randomMultiplier, setRandomMultiplier] = useState(false)
+  const [inputMultiplierMin, setInputMultiplierMin] = useState(0.05)
+  const [inputMultiplierMax, setInputMultiplierMax] = useState(1.0)
+  const [outputMultiplierMin, setOutputMultiplierMin] = useState(0.05)
+  const [outputMultiplierMax, setOutputMultiplierMax] = useState(1.0)
   const [forceOverride, setForceOverride] = useState(false)
   const [forceInputTokens, setForceInputTokens] = useState(0)
   const [forceOutputTokens, setForceOutputTokens] = useState(0)
@@ -30,6 +35,11 @@ export function CacheSimulationPanel() {
       setMinTokensToTrigger(data.minTokensToTrigger)
       setInputTokensMultiplier(data.inputTokensMultiplier)
       setOutputTokensMultiplier(data.outputTokensMultiplier)
+      setRandomMultiplier(data.randomMultiplier)
+      setInputMultiplierMin(data.inputMultiplierMin)
+      setInputMultiplierMax(data.inputMultiplierMax)
+      setOutputMultiplierMin(data.outputMultiplierMin)
+      setOutputMultiplierMax(data.outputMultiplierMax)
       setForceOverride(data.forceOverride)
       setForceInputTokens(data.forceInputTokens)
       setForceOutputTokens(data.forceOutputTokens)
@@ -47,6 +57,11 @@ export function CacheSimulationPanel() {
         minTokensToTrigger,
         inputTokensMultiplier,
         outputTokensMultiplier,
+        randomMultiplier,
+        inputMultiplierMin,
+        inputMultiplierMax,
+        outputMultiplierMin,
+        outputMultiplierMax,
         forceOverride,
         forceInputTokens,
         forceOutputTokens,
@@ -68,6 +83,11 @@ export function CacheSimulationPanel() {
       setMinTokensToTrigger(data.minTokensToTrigger)
       setInputTokensMultiplier(data.inputTokensMultiplier)
       setOutputTokensMultiplier(data.outputTokensMultiplier)
+      setRandomMultiplier(data.randomMultiplier)
+      setInputMultiplierMin(data.inputMultiplierMin)
+      setInputMultiplierMax(data.inputMultiplierMax)
+      setOutputMultiplierMin(data.outputMultiplierMin)
+      setOutputMultiplierMax(data.outputMultiplierMax)
       setForceOverride(data.forceOverride)
       setForceInputTokens(data.forceInputTokens)
       setForceOutputTokens(data.forceOutputTokens)
@@ -75,24 +95,6 @@ export function CacheSimulationPanel() {
       setForceCacheCreationTokens(data.forceCacheCreationTokens)
     }
   }
-
-  // 计算模拟节省比例
-  const calcSavings = () => {
-    if (!enabled) return 0
-    if (forceOverride) {
-      // 强制覆盖模式：假设实际 10000 tokens，计算节省
-      const actualCost = 10000 // 假设基准
-      const reportedCost = forceInputTokens + forceOutputTokens * 4 // output 通常 4x 价格
-      return Math.max(0, Math.round((1 - reportedCost / actualCost) * 100))
-    }
-    // 倍率模式
-    const inputSaving = (1 - inputTokensMultiplier) * 100
-    const outputSaving = (1 - outputTokensMultiplier) * 100
-    const cacheSaving = inputTokensMultiplier * cacheHitRatio * 0.9 * 100
-    return Math.round(Math.min(99, inputSaving * 0.6 + outputSaving * 0.4 + cacheSaving * 0.3))
-  }
-
-  const savingsPercent = calcSavings()
 
   if (isLoading) {
     return (
@@ -109,7 +111,7 @@ export function CacheSimulationPanel() {
           <span>Cache Simulation (缓存计费模拟)</span>
           {enabled && (
             <span className="text-xs font-normal px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-              已启用 · 混合模式
+              已启用{randomMultiplier ? ' · 随机模式' : ' · 混合模式'}
             </span>
           )}
         </CardTitle>
@@ -134,17 +136,14 @@ export function CacheSimulationPanel() {
 
         {enabled && (
           <>
-            {/* ===== 强制覆盖（填>0的字段会写死） ===== */}
+            {/* ===== 1. 强制覆盖（优先级最高） ===== */}
             <div className="border rounded-lg p-3 space-y-3 bg-red-50/50 dark:bg-red-950/20">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-red-700 dark:text-red-400">
-                  🔒 强制覆盖（填 &gt;0 = 写死，填 0 = 走下面的倍率）
-                </label>
-              </div>
-
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                1. 强制覆盖（填 &gt;0 = 写死该字段，填 0 = 走下面的倍率/随机）
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">input_tokens（0=走倍率）</label>
+                  <label className="text-xs text-muted-foreground">input_tokens</label>
                   <input
                     type="number"
                     min="0"
@@ -154,7 +153,7 @@ export function CacheSimulationPanel() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">output_tokens（0=走倍率）</label>
+                  <label className="text-xs text-muted-foreground">output_tokens</label>
                   <input
                     type="number"
                     min="0"
@@ -164,7 +163,7 @@ export function CacheSimulationPanel() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">cache_read_input_tokens（0=走比例）</label>
+                  <label className="text-xs text-muted-foreground">cache_read_input_tokens</label>
                   <input
                     type="number"
                     min="0"
@@ -174,7 +173,7 @@ export function CacheSimulationPanel() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">cache_creation_input_tokens（0=走比例）</label>
+                  <label className="text-xs text-muted-foreground">cache_creation_input_tokens</label>
                   <input
                     type="number"
                     min="0"
@@ -183,24 +182,106 @@ export function CacheSimulationPanel() {
                     className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                   />
                 </div>
-                <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground">
-                    每个字段独立生效：&gt;0 强制写死，=0 走下面的倍率+缓存比例计算。可混合使用。
-                  </p>
-                </div>
               </div>
             </div>
 
-            {/* ===== 倍率 + 缓存模拟（强制覆盖=0的字段走这里） ===== */}
-            <div className="border rounded-lg p-3 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground">📊 倍率 + 缓存模拟（未被强制覆盖的字段走这里）</p>
+            {/* ===== 2. 随机倍率区间 ===== */}
+            <div className="border rounded-lg p-3 space-y-3 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                  2. 随机倍率区间（每次请求在 [min, max] 范围内随机取值）
+                </p>
+                <button
+                  onClick={() => setRandomMultiplier(!randomMultiplier)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    randomMultiplier ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      randomMultiplier ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
 
-                {/* Input Token 倍率 */}
+              {randomMultiplier && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Input 倍率区间: [{(inputMultiplierMin * 100).toFixed(0)}% ~ {(inputMultiplierMax * 100).toFixed(0)}%]
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={(inputMultiplierMin * 100).toFixed(0)}
+                        onChange={(e) => setInputMultiplierMin(Number(e.target.value) / 100)}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        placeholder="min %"
+                      />
+                      <span className="self-center text-xs">~</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={(inputMultiplierMax * 100).toFixed(0)}
+                        onChange={(e) => setInputMultiplierMax(Number(e.target.value) / 100)}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        placeholder="max %"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Output 倍率区间: [{(outputMultiplierMin * 100).toFixed(0)}% ~ {(outputMultiplierMax * 100).toFixed(0)}%]
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={(outputMultiplierMin * 100).toFixed(0)}
+                        onChange={(e) => setOutputMultiplierMin(Number(e.target.value) / 100)}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        placeholder="min %"
+                      />
+                      <span className="self-center text-xs">~</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={(outputMultiplierMax * 100).toFixed(0)}
+                        onChange={(e) => setOutputMultiplierMax(Number(e.target.value) / 100)}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        placeholder="max %"
+                      />
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      开启后每次请求随机取倍率，让 token 数看起来更自然。关闭则走下面的固定倍率。
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ===== 3. 固定倍率（随机关闭时生效） ===== */}
+            {!randomMultiplier && (
+              <div className="border rounded-lg p-3 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground">3. 固定倍率（随机关闭时，未被强制覆盖的字段走这里）</p>
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm">Input Token 倍率</label>
                     <span className="text-sm font-mono text-muted-foreground">
-                      ×{inputTokensMultiplier.toFixed(2)} (报告 {(inputTokensMultiplier * 100).toFixed(0)}%)
+                      x{inputTokensMultiplier.toFixed(2)} ({(inputTokensMultiplier * 100).toFixed(0)}%)
                     </span>
                   </div>
                   <input
@@ -211,17 +292,13 @@ export function CacheSimulationPanel() {
                     onChange={(e) => setInputTokensMultiplier(Number(e.target.value) / 100)}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-blue-500"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    报告给下游的 input_tokens = 实际值 × 此倍率。设为 0.1 = 只报告 10%
-                  </p>
                 </div>
 
-                {/* Output Token 倍率 */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm">Output Token 倍率</label>
                     <span className="text-sm font-mono text-muted-foreground">
-                      ×{outputTokensMultiplier.toFixed(2)} (报告 {(outputTokensMultiplier * 100).toFixed(0)}%)
+                      x{outputTokensMultiplier.toFixed(2)} ({(outputTokensMultiplier * 100).toFixed(0)}%)
                     </span>
                   </div>
                   <input
@@ -232,74 +309,60 @@ export function CacheSimulationPanel() {
                     onChange={(e) => setOutputTokensMultiplier(Number(e.target.value) / 100)}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-purple-500"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    报告给下游的 output_tokens = 实际值 × 此倍率。设为 0.1 = 只报告 10%
-                  </p>
-                </div>
-
-                {/* 缓存命中率 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm">缓存命中率 (Cache Hit Ratio)</label>
-                    <span className="text-sm font-mono text-muted-foreground">
-                      {(cacheHitRatio * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={cacheHitRatio * 100}
-                    onChange={(e) => setCacheHitRatio(Number(e.target.value) / 100)}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-green-500"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    缩减后的 input_tokens 中被标记为 cache_read 的比例（下游按 10% 价格计费）
-                  </p>
-                </div>
-
-                {/* 缓存写入率 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm">缓存写入率 (Cache Creation Ratio)</label>
-                    <span className="text-sm font-mono text-muted-foreground">
-                      {(cacheCreationRatio * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={cacheCreationRatio * 100}
-                    onChange={(e) => setCacheCreationRatio(Number(e.target.value) / 100)}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-orange-500"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    标记为 cache_creation 的比例（下游按 125% 价格计费，通常设为 0）
-                  </p>
-                </div>
-
-                {/* 最小触发阈值 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm">最小触发阈值</label>
-                    <span className="text-sm font-mono text-muted-foreground">
-                      {minTokensToTrigger} tokens
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10000"
-                    value={minTokensToTrigger}
-                    onChange={(e) => setMinTokensToTrigger(Number(e.target.value))}
-                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    input_tokens 低于此值时不模拟缓存（倍率缩减仍生效）
-                  </p>
                 </div>
               </div>
+            )}
+
+            {/* ===== 4. 缓存模拟比例 ===== */}
+            <div className="border rounded-lg p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">4. 缓存模拟（在最终 input_tokens 基础上叠加）</p>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm">缓存命中率</label>
+                  <span className="text-sm font-mono text-muted-foreground">{(cacheHitRatio * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={cacheHitRatio * 100}
+                  onChange={(e) => setCacheHitRatio(Number(e.target.value) / 100)}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-green-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm">缓存写入率</label>
+                  <span className="text-sm font-mono text-muted-foreground">{(cacheCreationRatio * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={cacheCreationRatio * 100}
+                  onChange={(e) => setCacheCreationRatio(Number(e.target.value) / 100)}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-orange-500"
+                />
+                <p className="text-xs text-muted-foreground">通常设为 0（125% 价格反而加钱）</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm">最小触发阈值</label>
+                  <span className="text-sm font-mono text-muted-foreground">{minTokensToTrigger} tokens</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={minTokensToTrigger}
+                  onChange={(e) => setMinTokensToTrigger(Number(e.target.value))}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                />
+              </div>
+            </div>
           </>
         )}
 

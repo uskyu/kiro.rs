@@ -79,6 +79,11 @@ export interface CacheSimulationResponse {
   minTokensToTrigger: number
   inputTokensMultiplier: number
   outputTokensMultiplier: number
+  randomMultiplier: boolean
+  inputMultiplierMin: number
+  inputMultiplierMax: number
+  outputMultiplierMin: number
+  outputMultiplierMax: number
   forceOverride: boolean
   forceInputTokens: number
   forceOutputTokens: number
@@ -93,6 +98,11 @@ export interface SetCacheSimulationRequest {
   minTokensToTrigger: number
   inputTokensMultiplier: number
   outputTokensMultiplier: number
+  randomMultiplier: boolean
+  inputMultiplierMin: number
+  inputMultiplierMax: number
+  outputMultiplierMin: number
+  outputMultiplierMax: number
   forceOverride: boolean
   forceInputTokens: number
   forceOutputTokens: number
