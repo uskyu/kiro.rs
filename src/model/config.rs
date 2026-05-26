@@ -341,6 +341,7 @@ impl Default for Config {
             load_balancing_mode: default_load_balancing_mode(),
             extract_thinking: default_extract_thinking(),
             default_system_prompt: default_system_prompt(),
+            system_prompt_position: default_prompt_position(),
             model_system_prompts: HashMap::new(),
             default_endpoint: default_endpoint(),
             endpoints: HashMap::new(),
