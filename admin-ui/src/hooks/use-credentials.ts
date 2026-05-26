@@ -171,7 +171,7 @@ export function useModelSystemPrompts() {
 export function useSetModelSystemPrompts() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (prompts: Record<string, string>) => setModelSystemPrompts(prompts),
+    mutationFn: (req: { modelSystemPrompts: Record<string, string>; systemPromptPosition: string }) => setModelSystemPrompts(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['modelSystemPrompts'] })
     },

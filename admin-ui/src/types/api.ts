@@ -77,6 +77,7 @@ export interface CacheSimulationResponse {
   cacheHitRatio: number
   cacheCreationRatio: number
   minTokensToTrigger: number
+  cacheTriggerProbability: number
   inputTokensMultiplier: number
   outputTokensMultiplier: number
   randomMultiplier: boolean
@@ -96,6 +97,7 @@ export interface SetCacheSimulationRequest {
   cacheHitRatio: number
   cacheCreationRatio: number
   minTokensToTrigger: number
+  cacheTriggerProbability: number
   inputTokensMultiplier: number
   outputTokensMultiplier: number
   randomMultiplier: boolean
@@ -113,10 +115,12 @@ export interface SetCacheSimulationRequest {
 // 模型级系统提示词映射
 export interface ModelSystemPromptsResponse {
   modelSystemPrompts: Record<string, string>
+  systemPromptPosition: string
 }
 
 export interface SetModelSystemPromptsRequest {
   modelSystemPrompts: Record<string, string>
+  systemPromptPosition: string
 }
 
 // 添加凭据请求

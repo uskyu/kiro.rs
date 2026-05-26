@@ -42,6 +42,12 @@ pub struct CacheSimulationConfig {
     #[serde(default = "default_min_tokens_to_trigger")]
     pub min_tokens_to_trigger: i32,
 
+    /// 缓存模拟触发概率（0.0-1.0），每次请求按此概率决定是否触发缓存模拟
+    /// 1.0 = 每次都触发，0.7 = 70% 概率触发，0 = 永不触发
+    /// 默认 1.0（总是触发）
+    #[serde(default = "default_multiplier")]
+    pub cache_trigger_probability: f64,
+
     /// Input token 固定倍率（0.01-1.0）
     /// 当随机模式关闭时使用此固定值
     #[serde(default = "default_multiplier")]
@@ -104,6 +110,7 @@ impl Default for CacheSimulationConfig {
             cache_hit_ratio: default_cache_hit_ratio(),
             cache_creation_ratio: 0.0,
             min_tokens_to_trigger: default_min_tokens_to_trigger(),
+            cache_trigger_probability: 1.0,
             input_tokens_multiplier: 1.0,
             output_tokens_multiplier: 1.0,
             random_multiplier: false,
@@ -217,9 +224,14 @@ pub struct Config {
     #[serde(default = "default_extract_thinking")]
     pub extract_thinking: bool,
 
-    /// 全局默认系统提示词，会注入到每个 Anthropic messages 请求的 system 最前面。
+    /// 全局默认系统提示词，会注入到每个 Anthropic messages 请求的 system。
     #[serde(default = "default_system_prompt")]
     pub default_system_prompt: String,
+
+    /// 系统提示词注入位置："prepend"（插到最前面）或 "append"（追加到最后面）
+    /// 默认 "prepend"。设为 "append" 时模型更倾向于听从注入的提示词。
+    #[serde(default = "default_prompt_position")]
+    pub system_prompt_position: String,
 
     /// 模型级系统提示词映射
     ///
@@ -295,6 +307,10 @@ fn default_extract_thinking() -> bool {
 
 fn default_system_prompt() -> String {
     "你好！我是 Claude，由 Anthropic 公司开发的人工智能助手。Anthropic 是一家专注于人工智能安全研究的公司。".to_string()
+}
+
+fn default_prompt_position() -> String {
+    "prepend".to_string()
 }
 
 fn default_endpoint() -> String {

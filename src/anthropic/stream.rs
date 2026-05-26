@@ -611,6 +611,16 @@ impl StreamContext {
             });
         }
 
+        // 概率触发
+        if self.cache_config.cache_trigger_probability < 1.0 {
+            if fastrand::f64() > self.cache_config.cache_trigger_probability {
+                return json!({
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens
+                });
+            }
+        }
+
         // 计算 input 最终报告值
         let reported_input = if self.cache_config.force_input_tokens > 0 {
             self.cache_config.force_input_tokens

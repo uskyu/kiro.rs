@@ -218,6 +218,8 @@ pub struct SetSystemPromptRequest {
 pub struct ModelSystemPromptsResponse {
     /// 模型名称 → 专用系统提示词
     pub model_system_prompts: std::collections::HashMap<String, String>,
+    /// 注入位置："prepend" 或 "append"
+    pub system_prompt_position: String,
 }
 
 /// 设置模型级系统提示词映射请求
@@ -226,6 +228,13 @@ pub struct ModelSystemPromptsResponse {
 pub struct SetModelSystemPromptsRequest {
     /// 模型名称 → 专用系统提示词
     pub model_system_prompts: std::collections::HashMap<String, String>,
+    /// 注入位置："prepend" 或 "append"
+    #[serde(default = "default_prompt_position")]
+    pub system_prompt_position: String,
+}
+
+fn default_prompt_position() -> String {
+    "prepend".to_string()
 }
 
 // ============ 缓存模拟配置 ============
@@ -242,6 +251,8 @@ pub struct CacheSimulationResponse {
     pub cache_creation_ratio: f64,
     /// 最小触发阈值
     pub min_tokens_to_trigger: i32,
+    /// 缓存模拟触发概率（0.0-1.0）
+    pub cache_trigger_probability: f64,
     /// Input token 倍率（0.01-1.0）
     pub input_tokens_multiplier: f64,
     /// Output token 倍率（0.01-1.0）
@@ -280,6 +291,9 @@ pub struct SetCacheSimulationRequest {
     pub cache_creation_ratio: f64,
     /// 最小触发阈值
     pub min_tokens_to_trigger: i32,
+    /// 缓存模拟触发概率（0.0-1.0）
+    #[serde(default = "default_multiplier")]
+    pub cache_trigger_probability: f64,
     /// Input token 倍率（0.01-1.0）
     #[serde(default = "default_multiplier")]
     pub input_tokens_multiplier: f64,

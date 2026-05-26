@@ -43,6 +43,8 @@ pub struct AdminService {
     /// 已注册的端点名称集合（用于 add_credential 校验）
     known_endpoints: HashSet<String>,
     default_system_prompt: Arc<RwLock<String>>,
+    /// 系统提示词注入位置
+    system_prompt_position: Arc<RwLock<String>>,
     /// 模型级系统提示词映射
     model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
     /// 缓存模拟配置（可动态修改）
@@ -54,6 +56,7 @@ impl AdminService {
         token_manager: Arc<MultiTokenManager>,
         known_endpoints: impl IntoIterator<Item = String>,
         default_system_prompt: Arc<RwLock<String>>,
+        system_prompt_position: Arc<RwLock<String>>,
         model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
         cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
     ) -> Self {
@@ -69,6 +72,7 @@ impl AdminService {
             cache_path,
             known_endpoints: known_endpoints.into_iter().collect(),
             default_system_prompt,
+            system_prompt_position,
             model_system_prompts,
             cache_simulation,
         }
@@ -359,6 +363,7 @@ impl AdminService {
     pub fn get_model_system_prompts(&self) -> ModelSystemPromptsResponse {
         ModelSystemPromptsResponse {
             model_system_prompts: self.model_system_prompts.read().clone(),
+            system_prompt_position: self.system_prompt_position.read().clone(),
         }
     }
 
@@ -368,6 +373,7 @@ impl AdminService {
         req: SetModelSystemPromptsRequest,
     ) -> Result<ModelSystemPromptsResponse, AdminServiceError> {
         let prompts = req.model_system_prompts;
+        let position = if req.system_prompt_position == "append" { "append".to_string() } else { "prepend".to_string() };
 
         // 持久化到配置文件
         let config_path = self
@@ -381,6 +387,7 @@ impl AdminService {
             .with_context(|| format!("failed to reload config: {}", config_path.display()))
             .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
         config.model_system_prompts = prompts.clone();
+        config.system_prompt_position = position.clone();
         config
             .save()
             .with_context(|| {
@@ -392,9 +399,11 @@ impl AdminService {
             .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
 
         *self.model_system_prompts.write() = prompts.clone();
+        *self.system_prompt_position.write() = position.clone();
 
         Ok(ModelSystemPromptsResponse {
             model_system_prompts: prompts,
+            system_prompt_position: position,
         })
     }
 
@@ -414,6 +423,7 @@ impl AdminService {
             cache_hit_ratio: config.cache_hit_ratio,
             cache_creation_ratio: config.cache_creation_ratio,
             min_tokens_to_trigger: config.min_tokens_to_trigger,
+            cache_trigger_probability: config.cache_trigger_probability,
             input_tokens_multiplier: config.input_tokens_multiplier,
             output_tokens_multiplier: config.output_tokens_multiplier,
             random_multiplier: config.random_multiplier,
@@ -504,6 +514,7 @@ impl AdminService {
             cache_hit_ratio: req.cache_hit_ratio,
             cache_creation_ratio: req.cache_creation_ratio,
             min_tokens_to_trigger: req.min_tokens_to_trigger,
+            cache_trigger_probability: req.cache_trigger_probability,
             input_tokens_multiplier: req.input_tokens_multiplier,
             output_tokens_multiplier: req.output_tokens_multiplier,
             random_multiplier: req.random_multiplier,
@@ -548,6 +559,7 @@ impl AdminService {
             cache_hit_ratio: req.cache_hit_ratio,
             cache_creation_ratio: req.cache_creation_ratio,
             min_tokens_to_trigger: req.min_tokens_to_trigger,
+            cache_trigger_probability: req.cache_trigger_probability,
             input_tokens_multiplier: req.input_tokens_multiplier,
             output_tokens_multiplier: req.output_tokens_multiplier,
             random_multiplier: req.random_multiplier,

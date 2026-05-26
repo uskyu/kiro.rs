@@ -11,6 +11,7 @@ export function ModelPromptsPanel() {
   const { mutate: saveModelPrompts, isPending: isSaving } = useSetModelSystemPrompts()
 
   const [entries, setEntries] = useState<Array<{ model: string; prompt: string }>>([])
+  const [position, setPosition] = useState('prepend')
 
   useEffect(() => {
     if (data?.modelSystemPrompts) {
@@ -19,6 +20,9 @@ export function ModelPromptsPanel() {
         prompt,
       }))
       setEntries(items.length > 0 ? items : [])
+    }
+    if (data?.systemPromptPosition) {
+      setPosition(data.systemPromptPosition)
     }
   }, [data])
 
@@ -32,7 +36,7 @@ export function ModelPromptsPanel() {
       }
     }
 
-    saveModelPrompts(prompts, {
+    saveModelPrompts({ modelSystemPrompts: prompts, systemPromptPosition: position }, {
       onSuccess: () => toast.success('模型提示词映射已保存'),
       onError: (error) => toast.error(`保存失败: ${extractErrorMessage(error)}`),
     })
@@ -47,6 +51,9 @@ export function ModelPromptsPanel() {
       setEntries(items)
     } else {
       setEntries([])
+    }
+    if (data?.systemPromptPosition) {
+      setPosition(data.systemPromptPosition)
     }
   }
 
@@ -83,6 +90,36 @@ export function ModelPromptsPanel() {
         <p className="text-xs text-muted-foreground">
           为特定模型设置专用系统提示词。支持前缀匹配，未匹配的模型使用全局默认提示词。
         </p>
+
+        {/* 注入位置选择 */}
+        <div className="flex items-center gap-3 p-2 border rounded-md bg-muted/30">
+          <label className="text-sm font-medium whitespace-nowrap">注入位置：</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPosition('prepend')}
+              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
+                position === 'prepend'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-input hover:bg-muted'
+              }`}
+            >
+              前置 (prepend)
+            </button>
+            <button
+              onClick={() => setPosition('append')}
+              className={`px-3 py-1 text-xs rounded-md border transition-colors ${
+                position === 'append'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-input hover:bg-muted'
+              }`}
+            >
+              后置 (append)
+            </button>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {position === 'append' ? '放最后面，模型更听从注入的提示词' : '放最前面，用户的 system prompt 在后面'}
+          </span>
+        </div>
 
         {entries.length === 0 ? (
           <div className="text-center py-4 text-sm text-muted-foreground border border-dashed rounded-md">

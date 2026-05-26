@@ -14,6 +14,7 @@ export function CacheSimulationPanel() {
   const [cacheHitRatio, setCacheHitRatio] = useState(0.8)
   const [cacheCreationRatio, setCacheCreationRatio] = useState(0.0)
   const [minTokensToTrigger, setMinTokensToTrigger] = useState(100)
+  const [cacheTriggerProbability, setCacheTriggerProbability] = useState(1.0)
   const [inputTokensMultiplier, setInputTokensMultiplier] = useState(1.0)
   const [outputTokensMultiplier, setOutputTokensMultiplier] = useState(1.0)
   const [randomMultiplier, setRandomMultiplier] = useState(false)
@@ -33,6 +34,7 @@ export function CacheSimulationPanel() {
       setCacheHitRatio(data.cacheHitRatio)
       setCacheCreationRatio(data.cacheCreationRatio)
       setMinTokensToTrigger(data.minTokensToTrigger)
+      setCacheTriggerProbability(data.cacheTriggerProbability)
       setInputTokensMultiplier(data.inputTokensMultiplier)
       setOutputTokensMultiplier(data.outputTokensMultiplier)
       setRandomMultiplier(data.randomMultiplier)
@@ -55,6 +57,7 @@ export function CacheSimulationPanel() {
         cacheHitRatio,
         cacheCreationRatio,
         minTokensToTrigger,
+        cacheTriggerProbability,
         inputTokensMultiplier,
         outputTokensMultiplier,
         randomMultiplier,
@@ -81,6 +84,7 @@ export function CacheSimulationPanel() {
       setCacheHitRatio(data.cacheHitRatio)
       setCacheCreationRatio(data.cacheCreationRatio)
       setMinTokensToTrigger(data.minTokensToTrigger)
+      setCacheTriggerProbability(data.cacheTriggerProbability)
       setInputTokensMultiplier(data.inputTokensMultiplier)
       setOutputTokensMultiplier(data.outputTokensMultiplier)
       setRandomMultiplier(data.randomMultiplier)
@@ -361,6 +365,24 @@ export function CacheSimulationPanel() {
                   onChange={(e) => setMinTokensToTrigger(Number(e.target.value))}
                   className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm">触发概率</label>
+                  <span className="text-sm font-mono text-muted-foreground">{(cacheTriggerProbability * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={cacheTriggerProbability * 100}
+                  onChange={(e) => setCacheTriggerProbability(Number(e.target.value) / 100)}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-cyan-500"
+                />
+                <p className="text-xs text-muted-foreground">
+                  每次请求按此概率决定是否触发缓存模拟。100%=每次都触发，70%=有30%概率不触发
+                </p>
               </div>
             </div>
           </>

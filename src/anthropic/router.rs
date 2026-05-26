@@ -42,10 +42,11 @@ pub fn create_router_with_provider(
     kiro_provider: Option<KiroProvider>,
     extract_thinking: bool,
     default_system_prompt: Arc<RwLock<String>>,
+    system_prompt_position: Arc<RwLock<String>>,
     model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
     cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
 ) -> Router {
-    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt, model_system_prompts, cache_simulation);
+    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt, system_prompt_position, model_system_prompts, cache_simulation);
     if let Some(provider) = kiro_provider {
         state = state.with_kiro_provider(provider);
     }

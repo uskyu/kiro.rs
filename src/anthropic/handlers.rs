@@ -50,6 +50,17 @@ fn build_usage_with_cache_simulation(
         });
     }
 
+    // 概率触发：按 cache_trigger_probability 决定本次是否执行缓存模拟
+    if cache_config.cache_trigger_probability < 1.0 {
+        if fastrand::f64() > cache_config.cache_trigger_probability {
+            // 本次不触发，返回原始值
+            return json!({
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            });
+        }
+    }
+
     // 计算 input 最终报告值
     let reported_input = if cache_config.force_input_tokens > 0 {
         cache_config.force_input_tokens
@@ -149,23 +160,26 @@ fn map_provider_error(err: Error) -> Response {
         .into_response()
 }
 
-fn apply_default_system_prompt(payload: &mut MessagesRequest, default_system_prompt: &str) {
+fn apply_default_system_prompt(payload: &mut MessagesRequest, default_system_prompt: &str, position: &str) {
     let default_system_prompt = default_system_prompt.trim();
     if default_system_prompt.is_empty() {
         return;
     }
 
+    let msg = SystemMessage {
+        text: default_system_prompt.to_string(),
+    };
+
     match payload.system.as_mut() {
-        Some(system) => system.insert(
-            0,
-            SystemMessage {
-                text: default_system_prompt.to_string(),
-            },
-        ),
+        Some(system) => {
+            if position == "append" {
+                system.push(msg);
+            } else {
+                system.insert(0, msg);
+            }
+        }
         None => {
-            payload.system = Some(vec![SystemMessage {
-                text: default_system_prompt.to_string(),
-            }]);
+            payload.system = Some(vec![msg]);
         }
     }
 }
@@ -210,23 +224,27 @@ fn get_effective_system_prompt(
 fn apply_default_system_prompt_to_count_tokens(
     payload: &mut CountTokensRequest,
     default_system_prompt: &str,
+    position: &str,
 ) {
     let default_system_prompt = default_system_prompt.trim();
     if default_system_prompt.is_empty() {
         return;
     }
 
+    let msg = SystemMessage {
+        text: default_system_prompt.to_string(),
+    };
+
     match payload.system.as_mut() {
-        Some(system) => system.insert(
-            0,
-            SystemMessage {
-                text: default_system_prompt.to_string(),
-            },
-        ),
+        Some(system) => {
+            if position == "append" {
+                system.push(msg);
+            } else {
+                system.insert(0, msg);
+            }
+        }
         None => {
-            payload.system = Some(vec![SystemMessage {
-                text: default_system_prompt.to_string(),
-            }]);
+            payload.system = Some(vec![msg]);
         }
     }
 }
@@ -370,9 +388,10 @@ pub async fn post_messages(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
+    let prompt_position = state.system_prompt_position.read().clone();
     let model_system_prompts = state.model_system_prompts.read().clone();
     let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
-    apply_default_system_prompt(&mut payload, &effective_prompt);
+    apply_default_system_prompt(&mut payload, &effective_prompt, &prompt_position);
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {
         Some(p) => p.clone(),
@@ -864,9 +883,10 @@ pub async fn count_tokens(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
+    let prompt_position = state.system_prompt_position.read().clone();
     let model_system_prompts = state.model_system_prompts.read().clone();
     let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
-    apply_default_system_prompt_to_count_tokens(&mut payload, &effective_prompt);
+    apply_default_system_prompt_to_count_tokens(&mut payload, &effective_prompt, &prompt_position);
 
     let total_tokens = token::count_all_tokens(
         payload.model,
@@ -898,9 +918,10 @@ pub async fn post_messages_cc(
     );
 
     let default_system_prompt = state.default_system_prompt.read().clone();
+    let prompt_position = state.system_prompt_position.read().clone();
     let model_system_prompts = state.model_system_prompts.read().clone();
     let effective_prompt = get_effective_system_prompt(&payload.model, &model_system_prompts, &default_system_prompt);
-    apply_default_system_prompt(&mut payload, &effective_prompt);
+    apply_default_system_prompt(&mut payload, &effective_prompt, &prompt_position);
 
     // 检查 KiroProvider 是否可用
     let provider = match &state.kiro_provider {

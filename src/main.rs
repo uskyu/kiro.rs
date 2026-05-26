@@ -143,6 +143,7 @@ async fn main() {
     });
     let token_manager = Arc::new(token_manager);
     let default_system_prompt = Arc::new(RwLock::new(config.default_system_prompt.clone()));
+    let system_prompt_position = Arc::new(RwLock::new(config.system_prompt_position.clone()));
     let model_system_prompts = Arc::new(RwLock::new(config.model_system_prompts.clone()));
     let kiro_provider = KiroProvider::with_proxy(
         token_manager.clone(),
@@ -169,6 +170,7 @@ async fn main() {
         Some(kiro_provider),
         config.extract_thinking,
         default_system_prompt.clone(),
+        system_prompt_position.clone(),
         model_system_prompts.clone(),
         cache_simulation.clone(),
     );
@@ -191,6 +193,7 @@ async fn main() {
                     token_manager.clone(),
                     endpoint_names.clone(),
                     default_system_prompt.clone(),
+                    system_prompt_position.clone(),
                     model_system_prompts.clone(),
                     cache_simulation.clone(),
                 );

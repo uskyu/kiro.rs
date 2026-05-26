@@ -148,11 +148,11 @@ export async function getModelSystemPrompts(): Promise<ModelSystemPromptsRespons
 
 // 设置模型级系统提示词映射
 export async function setModelSystemPrompts(
-  modelSystemPrompts: Record<string, string>
+  req: SetModelSystemPromptsRequest
 ): Promise<ModelSystemPromptsResponse> {
   const { data } = await api.put<ModelSystemPromptsResponse>(
     '/config/model-system-prompts',
-    { modelSystemPrompts } as SetModelSystemPromptsRequest
+    req
   )
   return data
 }
