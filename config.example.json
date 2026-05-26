@@ -5,5 +5,28 @@
   "tlsBackend": "rustls",
   "region": "us-east-1",
   "adminApiKey": "sk-admin-your-secret-key",
-  "defaultEndpoint": "ide"
+  "defaultSystemPrompt": "你好！我是 Claude，由 Anthropic 公司开发的人工智能助手。Anthropic 是一家专注于人工智能安全研究的公司。",
+  "modelSystemPrompts": {
+    "claude-opus-4-6": "You are Claude Opus 4.6, a highly capable AI assistant.",
+    "claude-sonnet-4-6": "You are Claude Sonnet 4.6, a fast and efficient AI assistant."
+  },
+  "defaultEndpoint": "ide",
+  "cacheSimulation": {
+    "enabled": false,
+    "cacheHitRatio": 0.8,
+    "cacheCreationRatio": 0.0,
+    "minTokensToTrigger": 100,
+    "inputTokensMultiplier": 1.0,
+    "outputTokensMultiplier": 1.0,
+    "randomMultiplier": false,
+    "inputMultiplierMin": 0.05,
+    "inputMultiplierMax": 0.3,
+    "outputMultiplierMin": 0.05,
+    "outputMultiplierMax": 0.3,
+    "forceOverride": false,
+    "forceInputTokens": 0,
+    "forceOutputTokens": 0,
+    "forceCacheReadTokens": 0,
+    "forceCacheCreationTokens": 0
+  }
 }

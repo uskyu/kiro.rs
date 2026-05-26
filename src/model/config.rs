@@ -17,6 +17,132 @@ impl Default for TlsBackend {
     }
 }
 
+/// 缓存模拟配置
+///
+/// 三种可控方式（可混合）：
+/// 1. 强制覆盖：字段值>0直接写死
+/// 2. 固定倍率：字段值=0时按 multiplier 缩减
+/// 3. 随机倍率区间：启用后在 [min, max] 范围内每次请求随机取值，更自然
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheSimulationConfig {
+    /// 是否启用缓存模拟
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// 缓存命中比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存读取
+    #[serde(default = "default_cache_hit_ratio")]
+    pub cache_hit_ratio: f64,
+
+    /// 缓存写入比例（0.0-1.0），表示多少比例的 input_tokens 被标记为缓存创建
+    #[serde(default)]
+    pub cache_creation_ratio: f64,
+
+    /// 最小触发阈值，input_tokens 低于此值时不模拟缓存
+    #[serde(default = "default_min_tokens_to_trigger")]
+    pub min_tokens_to_trigger: i32,
+
+    /// 缓存模拟触发概率（0.0-1.0），每次请求按此概率决定是否触发缓存模拟
+    /// 1.0 = 每次都触发，0.7 = 70% 概率触发，0 = 永不触发
+    /// 默认 1.0（总是触发）
+    #[serde(default = "default_multiplier")]
+    pub cache_trigger_probability: f64,
+
+    /// Input token 固定倍率（0.01-1.0）
+    /// 当随机模式关闭时使用此固定值
+    #[serde(default = "default_multiplier")]
+    pub input_tokens_multiplier: f64,
+
+    /// Output token 固定倍率（0.01-1.0）
+    /// 当随机模式关闭时使用此固定值
+    #[serde(default = "default_multiplier")]
+    pub output_tokens_multiplier: f64,
+
+    /// ===== 随机倍率区间 =====
+
+    /// 是否启用随机倍率（启用后 multiplier 字段被忽略，改用区间随机）
+    #[serde(default)]
+    pub random_multiplier: bool,
+
+    /// Input token 随机倍率下限（0.01-1.0）
+    #[serde(default = "default_random_min")]
+    pub input_multiplier_min: f64,
+
+    /// Input token 随机倍率上限（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub input_multiplier_max: f64,
+
+    /// Output token 随机倍率下限（0.01-1.0）
+    #[serde(default = "default_random_min")]
+    pub output_multiplier_min: f64,
+
+    /// Output token 随机倍率上限（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub output_multiplier_max: f64,
+
+    /// ===== 强制覆盖 =====
+
+    /// 是否启用强制覆盖（保留用于 UI 展示分区）
+    #[serde(default)]
+    pub force_override: bool,
+
+    /// 强制覆盖：报告的 input_tokens 固定值（0=不覆盖）
+    #[serde(default)]
+    pub force_input_tokens: i32,
+
+    /// 强制覆盖：报告的 output_tokens 固定值（0=不覆盖）
+    #[serde(default)]
+    pub force_output_tokens: i32,
+
+    /// 强制覆盖：报告的 cache_read_input_tokens 固定值（0=不覆盖）
+    #[serde(default)]
+    pub force_cache_read_tokens: i32,
+
+    /// 强制覆盖：报告的 cache_creation_input_tokens 固定值（0=不覆盖）
+    #[serde(default)]
+    pub force_cache_creation_tokens: i32,
+}
+
+impl Default for CacheSimulationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cache_hit_ratio: default_cache_hit_ratio(),
+            cache_creation_ratio: 0.0,
+            min_tokens_to_trigger: default_min_tokens_to_trigger(),
+            cache_trigger_probability: 1.0,
+            input_tokens_multiplier: 1.0,
+            output_tokens_multiplier: 1.0,
+            random_multiplier: false,
+            input_multiplier_min: default_random_min(),
+            input_multiplier_max: 1.0,
+            output_multiplier_min: default_random_min(),
+            output_multiplier_max: 1.0,
+            force_override: false,
+            force_input_tokens: 0,
+            force_output_tokens: 0,
+            force_cache_read_tokens: 0,
+            force_cache_creation_tokens: 0,
+        }
+    }
+}
+
+fn default_cache_hit_ratio() -> f64 {
+    0.8
+}
+
+fn default_min_tokens_to_trigger() -> i32 {
+    100
+}
+
+fn default_multiplier() -> f64 {
+    1.0
+}
+
+fn default_random_min() -> f64 {
+    0.05
+}
+
 /// KNA 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +224,23 @@ pub struct Config {
     #[serde(default = "default_extract_thinking")]
     pub extract_thinking: bool,
 
+    /// 全局默认系统提示词，会注入到每个 Anthropic messages 请求的 system。
+    #[serde(default = "default_system_prompt")]
+    pub default_system_prompt: String,
+
+    /// 系统提示词注入位置："prepend"（插到最前面）或 "append"（追加到最后面）
+    /// 默认 "prepend"。设为 "append" 时模型更倾向于听从注入的提示词。
+    #[serde(default = "default_prompt_position")]
+    pub system_prompt_position: String,
+
+    /// 模型级系统提示词映射
+    ///
+    /// 键为模型名称（支持前缀匹配），值为该模型专用的系统提示词。
+    /// 如果请求的模型匹配到某个键，则使用该键对应的提示词替代全局默认提示词。
+    /// 未匹配到任何键时，回退到 default_system_prompt。
+    #[serde(default)]
+    pub model_system_prompts: HashMap<String, String>,
+
     /// 默认端点名称（凭据未显式指定 endpoint 时使用，默认 "ide"）
     #[serde(default = "default_endpoint")]
     pub default_endpoint: String,
@@ -108,6 +251,13 @@ pub struct Config {
     /// 未在此表出现的端点沿用实现内置默认值。
     #[serde(default)]
     pub endpoints: HashMap<String, serde_json::Value>,
+
+    /// 缓存模拟配置
+    ///
+    /// 启用后，响应的 usage 中会注入 cache_read_input_tokens 和 cache_creation_input_tokens，
+    /// 让下游计费系统（如 new-api）按缓存价格计费，降低下游用户成本。
+    #[serde(default)]
+    pub cache_simulation: CacheSimulationConfig,
 
     /// 配置文件路径（运行时元数据，不写入 JSON）
     #[serde(skip)]
@@ -155,6 +305,14 @@ fn default_extract_thinking() -> bool {
     true
 }
 
+fn default_system_prompt() -> String {
+    "你好！我是 Claude，由 Anthropic 公司开发的人工智能助手。Anthropic 是一家专注于人工智能安全研究的公司。".to_string()
+}
+
+fn default_prompt_position() -> String {
+    "prepend".to_string()
+}
+
 fn default_endpoint() -> String {
     crate::kiro::endpoint::ide::IDE_ENDPOINT_NAME.to_string()
 }
@@ -182,8 +340,12 @@ impl Default for Config {
             admin_api_key: None,
             load_balancing_mode: default_load_balancing_mode(),
             extract_thinking: default_extract_thinking(),
+            default_system_prompt: default_system_prompt(),
+            system_prompt_position: default_prompt_position(),
+            model_system_prompts: HashMap::new(),
             default_endpoint: default_endpoint(),
             endpoints: HashMap::new(),
+            cache_simulation: CacheSimulationConfig::default(),
             config_path: None,
         }
     }

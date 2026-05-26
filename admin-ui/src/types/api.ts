@@ -63,6 +63,66 @@ export interface SetPriorityRequest {
   priority: number
 }
 
+export interface SystemPromptResponse {
+  defaultSystemPrompt: string
+}
+
+export interface SetSystemPromptRequest {
+  defaultSystemPrompt: string
+}
+
+// 缓存模拟配置
+export interface CacheSimulationResponse {
+  enabled: boolean
+  cacheHitRatio: number
+  cacheCreationRatio: number
+  minTokensToTrigger: number
+  cacheTriggerProbability: number
+  inputTokensMultiplier: number
+  outputTokensMultiplier: number
+  randomMultiplier: boolean
+  inputMultiplierMin: number
+  inputMultiplierMax: number
+  outputMultiplierMin: number
+  outputMultiplierMax: number
+  forceOverride: boolean
+  forceInputTokens: number
+  forceOutputTokens: number
+  forceCacheReadTokens: number
+  forceCacheCreationTokens: number
+}
+
+export interface SetCacheSimulationRequest {
+  enabled: boolean
+  cacheHitRatio: number
+  cacheCreationRatio: number
+  minTokensToTrigger: number
+  cacheTriggerProbability: number
+  inputTokensMultiplier: number
+  outputTokensMultiplier: number
+  randomMultiplier: boolean
+  inputMultiplierMin: number
+  inputMultiplierMax: number
+  outputMultiplierMin: number
+  outputMultiplierMax: number
+  forceOverride: boolean
+  forceInputTokens: number
+  forceOutputTokens: number
+  forceCacheReadTokens: number
+  forceCacheCreationTokens: number
+}
+
+// 模型级系统提示词映射
+export interface ModelSystemPromptsResponse {
+  modelSystemPrompts: Record<string, string>
+  systemPromptPosition: string
+}
+
+export interface SetModelSystemPromptsRequest {
+  modelSystemPrompts: Record<string, string>
+  systemPromptPosition: string
+}
+
 // 添加凭据请求
 export interface AddCredentialRequest {
   refreshToken?: string

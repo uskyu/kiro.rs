@@ -10,9 +10,11 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
+use parking_lot::RwLock;
 
 use crate::common::auth;
 use crate::kiro::provider::KiroProvider;
+use crate::model::config::CacheSimulationConfig;
 
 use super::types::ErrorResponse;
 
@@ -75,17 +77,36 @@ pub struct AppState {
     pub kiro_provider: Option<Arc<KiroProvider>>,
     /// 是否开启非流式响应的 thinking 块提取
     pub extract_thinking: bool,
+    /// 全局默认系统提示词
+    pub default_system_prompt: Arc<RwLock<String>>,
+    /// 系统提示词注入位置（"prepend" 或 "append"）
+    pub system_prompt_position: Arc<RwLock<String>>,
+    /// 模型级系统提示词映射（模型名称 → 专用提示词）
+    pub model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
+    /// 缓存模拟配置（可通过 Admin API 动态修改）
+    pub cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
     /// 并发请求计数器
     pub concurrency: ConcurrencyCounter,
 }
 
 impl AppState {
     /// 创建新的应用状态
-    pub fn new(api_key: impl Into<String>, extract_thinking: bool) -> Self {
+    pub fn new(
+        api_key: impl Into<String>,
+        extract_thinking: bool,
+        default_system_prompt: Arc<RwLock<String>>,
+        system_prompt_position: Arc<RwLock<String>>,
+        model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
+        cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
+    ) -> Self {
         Self {
             api_key: api_key.into(),
             kiro_provider: None,
             extract_thinking,
+            default_system_prompt,
+            system_prompt_position,
+            model_system_prompts,
+            cache_simulation,
             concurrency: ConcurrencyCounter::new(),
         }
     }

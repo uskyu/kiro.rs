@@ -27,11 +27,7 @@ pub struct AdminState {
 }
 
 impl AdminState {
-    pub fn new(
-        admin_api_key: impl Into<String>,
-        service: AdminService,
-        concurrency: ConcurrencyCounter,
-    ) -> Self {
+    pub fn new(admin_api_key: impl Into<String>, service: AdminService, concurrency: ConcurrencyCounter) -> Self {
         Self {
             admin_api_key: admin_api_key.into(),
             service: Arc::new(service),

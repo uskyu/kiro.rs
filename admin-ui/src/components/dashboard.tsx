@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, LogOut, Moon, Sun, Server, Plus, Upload, FileUp, Trash2, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, LogOut, Moon, Sun, Server, Plus, Upload, FileUp, Trash2, RotateCcw, CheckCircle2, Save } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { storage } from '@/lib/storage'
@@ -12,7 +12,9 @@ import { AddCredentialDialog } from '@/components/add-credential-dialog'
 import { BatchImportDialog } from '@/components/batch-import-dialog'
 import { KamImportDialog } from '@/components/kam-import-dialog'
 import { BatchVerifyDialog, type VerifyResult } from '@/components/batch-verify-dialog'
-import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useStats } from '@/hooks/use-credentials'
+import { CacheSimulationPanel } from '@/components/cache-simulation-panel'
+import { ModelPromptsPanel } from '@/components/model-prompts-panel'
+import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt, useStats } from '@/hooks/use-credentials'
 import { getCredentialBalance, forceRefreshToken } from '@/api/credentials'
 import { extractErrorMessage } from '@/lib/utils'
 import type { BalanceResponse } from '@/types/api'
@@ -54,7 +56,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const { mutate: resetFailure } = useResetFailure()
   const { data: loadBalancingData, isLoading: isLoadingMode } = useLoadBalancingMode()
   const { mutate: setLoadBalancingMode, isPending: isSettingMode } = useSetLoadBalancingMode()
+  const { data: systemPromptData, isLoading: isLoadingSystemPrompt } = useSystemPrompt()
+  const { mutate: saveSystemPrompt, isPending: isSavingSystemPrompt } = useSetSystemPrompt()
   const { data: statsData } = useStats()
+  const [systemPromptDraft, setSystemPromptDraft] = useState('')
 
   // 计算分页
   const totalPages = Math.ceil((data?.credentials.length || 0) / itemsPerPage)
@@ -105,6 +110,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
       return next.size === prev.size ? prev : next
     })
   }, [data?.credentials])
+
+  useEffect(() => {
+    if (systemPromptData?.defaultSystemPrompt !== undefined) {
+      setSystemPromptDraft(systemPromptData.defaultSystemPrompt)
+    }
+  }, [systemPromptData?.defaultSystemPrompt])
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode)
@@ -508,6 +519,18 @@ export function Dashboard({ onLogout }: DashboardProps) {
     })
   }
 
+  const handleSaveSystemPrompt = () => {
+    saveSystemPrompt(systemPromptDraft, {
+      onSuccess: (response) => {
+        setSystemPromptDraft(response.defaultSystemPrompt)
+        toast.success('Default system prompt saved')
+      },
+      onError: (error) => {
+        toast.error(`Save failed: ${extractErrorMessage(error)}`)
+      }
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -620,9 +643,61 @@ export function Dashboard({ onLogout }: DashboardProps) {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                并发请求
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold flex items-center gap-2">
+                <span className="text-blue-600">{statsData?.active_requests ?? 0}</span>
+                <span className="text-sm font-normal text-muted-foreground">/ 累计 {statsData?.total_requests ?? 0}</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* 凭据列表 */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Default System Prompt
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <textarea
+              value={systemPromptDraft}
+              onChange={(e) => setSystemPromptDraft(e.target.value)}
+              placeholder="Enter the global default system prompt"
+              className="min-h-28 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleSaveSystemPrompt}
+                disabled={isLoadingSystemPrompt || isSavingSystemPrompt}
+              >
+                <Save className="h-4 w-4" />
+                {isSavingSystemPrompt ? 'Saving...' : 'Save Prompt'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setSystemPromptDraft(systemPromptData?.defaultSystemPrompt || '')}
+                disabled={isLoadingSystemPrompt || isSavingSystemPrompt}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Restore Current
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 模型级提示词映射 */}
+        <ModelPromptsPanel />
+
+        {/* 缓存模拟调控面板 */}
+        <CacheSimulationPanel />
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

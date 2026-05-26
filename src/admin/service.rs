@@ -4,17 +4,21 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Context;
 use chrono::Utc;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
 use crate::kiro::model::credentials::KiroCredentials;
 use crate::kiro::token_manager::MultiTokenManager;
+use crate::model::config::{CacheSimulationConfig, Config};
 
 use super::error::AdminServiceError;
 use super::types::{
-    AddCredentialRequest, AddCredentialResponse, BalanceResponse, CredentialStatusItem,
-    CredentialsStatusResponse, LoadBalancingModeResponse, SetLoadBalancingModeRequest,
+    AddCredentialRequest, AddCredentialResponse, BalanceResponse, CacheSimulationResponse,
+    CredentialStatusItem, CredentialsStatusResponse, LoadBalancingModeResponse,
+    ModelSystemPromptsResponse, SetCacheSimulationRequest, SetLoadBalancingModeRequest,
+    SetModelSystemPromptsRequest, SetSystemPromptRequest, SystemPromptResponse,
 };
 
 /// 余额缓存过期时间（秒），5 分钟
@@ -38,12 +42,23 @@ pub struct AdminService {
     cache_path: Option<PathBuf>,
     /// 已注册的端点名称集合（用于 add_credential 校验）
     known_endpoints: HashSet<String>,
+    default_system_prompt: Arc<RwLock<String>>,
+    /// 系统提示词注入位置
+    system_prompt_position: Arc<RwLock<String>>,
+    /// 模型级系统提示词映射
+    model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
+    /// 缓存模拟配置（可动态修改）
+    cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
 }
 
 impl AdminService {
     pub fn new(
         token_manager: Arc<MultiTokenManager>,
         known_endpoints: impl IntoIterator<Item = String>,
+        default_system_prompt: Arc<RwLock<String>>,
+        system_prompt_position: Arc<RwLock<String>>,
+        model_system_prompts: Arc<RwLock<HashMap<String, String>>>,
+        cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
     ) -> Self {
         let cache_path = token_manager
             .cache_dir()
@@ -56,6 +71,10 @@ impl AdminService {
             balance_cache: Mutex::new(balance_cache),
             cache_path,
             known_endpoints: known_endpoints.into_iter().collect(),
+            default_system_prompt,
+            system_prompt_position,
+            model_system_prompts,
+            cache_simulation,
         }
     }
 
@@ -299,12 +318,261 @@ impl AdminService {
         Ok(LoadBalancingModeResponse { mode: req.mode })
     }
 
+    /// 获取全局默认系统提示词
+    pub fn get_system_prompt(&self) -> SystemPromptResponse {
+        SystemPromptResponse {
+            default_system_prompt: self.default_system_prompt.read().clone(),
+        }
+    }
+
+    pub fn set_system_prompt(
+        &self,
+        req: SetSystemPromptRequest,
+    ) -> Result<SystemPromptResponse, AdminServiceError> {
+        let prompt = req.default_system_prompt;
+
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.default_system_prompt = prompt.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist default system prompt: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        *self.default_system_prompt.write() = prompt.clone();
+
+        Ok(SystemPromptResponse {
+            default_system_prompt: prompt,
+        })
+    }
+
+    /// 获取模型级系统提示词映射
+    pub fn get_model_system_prompts(&self) -> ModelSystemPromptsResponse {
+        ModelSystemPromptsResponse {
+            model_system_prompts: self.model_system_prompts.read().clone(),
+            system_prompt_position: self.system_prompt_position.read().clone(),
+        }
+    }
+
+    /// 设置模型级系统提示词映射
+    pub fn set_model_system_prompts(
+        &self,
+        req: SetModelSystemPromptsRequest,
+    ) -> Result<ModelSystemPromptsResponse, AdminServiceError> {
+        let prompts = req.model_system_prompts;
+        let position = if req.system_prompt_position == "append" { "append".to_string() } else { "prepend".to_string() };
+
+        // 持久化到配置文件
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.model_system_prompts = prompts.clone();
+        config.system_prompt_position = position.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist model system prompts: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        *self.model_system_prompts.write() = prompts.clone();
+        *self.system_prompt_position.write() = position.clone();
+
+        Ok(ModelSystemPromptsResponse {
+            model_system_prompts: prompts,
+            system_prompt_position: position,
+        })
+    }
+
     /// 强制刷新指定凭据的 Token
     pub async fn force_refresh_token(&self, id: u64) -> Result<(), AdminServiceError> {
         self.token_manager
             .force_refresh_token_for(id)
             .await
             .map_err(|e| self.classify_balance_error(e, id))
+    }
+
+    /// 获取缓存模拟配置
+    pub fn get_cache_simulation(&self) -> CacheSimulationResponse {
+        let config = self.cache_simulation.read().clone();
+        CacheSimulationResponse {
+            enabled: config.enabled,
+            cache_hit_ratio: config.cache_hit_ratio,
+            cache_creation_ratio: config.cache_creation_ratio,
+            min_tokens_to_trigger: config.min_tokens_to_trigger,
+            cache_trigger_probability: config.cache_trigger_probability,
+            input_tokens_multiplier: config.input_tokens_multiplier,
+            output_tokens_multiplier: config.output_tokens_multiplier,
+            random_multiplier: config.random_multiplier,
+            input_multiplier_min: config.input_multiplier_min,
+            input_multiplier_max: config.input_multiplier_max,
+            output_multiplier_min: config.output_multiplier_min,
+            output_multiplier_max: config.output_multiplier_max,
+            force_override: config.force_override,
+            force_input_tokens: config.force_input_tokens,
+            force_output_tokens: config.force_output_tokens,
+            force_cache_read_tokens: config.force_cache_read_tokens,
+            force_cache_creation_tokens: config.force_cache_creation_tokens,
+        }
+    }
+
+    /// 设置缓存模拟配置
+    pub fn set_cache_simulation(
+        &self,
+        req: SetCacheSimulationRequest,
+    ) -> Result<CacheSimulationResponse, AdminServiceError> {
+        // 验证参数
+        if req.cache_hit_ratio < 0.0 || req.cache_hit_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_hit_ratio 必须在 0.0 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.cache_creation_ratio < 0.0 || req.cache_creation_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_creation_ratio 必须在 0.0 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.cache_hit_ratio + req.cache_creation_ratio > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "cache_hit_ratio + cache_creation_ratio 不能超过 1.0".to_string(),
+            ));
+        }
+        if req.input_tokens_multiplier < 0.01 || req.input_tokens_multiplier > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "input_tokens_multiplier 必须在 0.01 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.output_tokens_multiplier < 0.01 || req.output_tokens_multiplier > 1.0 {
+            return Err(AdminServiceError::InvalidCredential(
+                "output_tokens_multiplier 必须在 0.01 到 1.0 之间".to_string(),
+            ));
+        }
+        if req.force_override {
+            if req.force_input_tokens < 0 || req.force_output_tokens < 0 {
+                return Err(AdminServiceError::InvalidCredential(
+                    "强制覆盖的 token 值不能为负数".to_string(),
+                ));
+            }
+            if req.force_cache_read_tokens < 0 || req.force_cache_creation_tokens < 0 {
+                return Err(AdminServiceError::InvalidCredential(
+                    "强制覆盖的缓存 token 值不能为负数".to_string(),
+                ));
+            }
+        }
+        if req.random_multiplier {
+            if req.input_multiplier_min < 0.01 || req.input_multiplier_min > 1.0
+                || req.input_multiplier_max < 0.01 || req.input_multiplier_max > 1.0
+            {
+                return Err(AdminServiceError::InvalidCredential(
+                    "随机倍率区间必须在 0.01 到 1.0 之间".to_string(),
+                ));
+            }
+            if req.input_multiplier_min > req.input_multiplier_max {
+                return Err(AdminServiceError::InvalidCredential(
+                    "input 随机倍率下限不能大于上限".to_string(),
+                ));
+            }
+            if req.output_multiplier_min < 0.01 || req.output_multiplier_min > 1.0
+                || req.output_multiplier_max < 0.01 || req.output_multiplier_max > 1.0
+            {
+                return Err(AdminServiceError::InvalidCredential(
+                    "随机倍率区间必须在 0.01 到 1.0 之间".to_string(),
+                ));
+            }
+            if req.output_multiplier_min > req.output_multiplier_max {
+                return Err(AdminServiceError::InvalidCredential(
+                    "output 随机倍率下限不能大于上限".to_string(),
+                ));
+            }
+        }
+
+        let new_config = CacheSimulationConfig {
+            enabled: req.enabled,
+            cache_hit_ratio: req.cache_hit_ratio,
+            cache_creation_ratio: req.cache_creation_ratio,
+            min_tokens_to_trigger: req.min_tokens_to_trigger,
+            cache_trigger_probability: req.cache_trigger_probability,
+            input_tokens_multiplier: req.input_tokens_multiplier,
+            output_tokens_multiplier: req.output_tokens_multiplier,
+            random_multiplier: req.random_multiplier,
+            input_multiplier_min: req.input_multiplier_min,
+            input_multiplier_max: req.input_multiplier_max,
+            output_multiplier_min: req.output_multiplier_min,
+            output_multiplier_max: req.output_multiplier_max,
+            force_override: req.force_override,
+            force_input_tokens: req.force_input_tokens,
+            force_output_tokens: req.force_output_tokens,
+            force_cache_read_tokens: req.force_cache_read_tokens,
+            force_cache_creation_tokens: req.force_cache_creation_tokens,
+        };
+
+        // 持久化到配置文件
+        let config_path = self
+            .token_manager
+            .config()
+            .config_path()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| AdminServiceError::InternalError("config path is unknown".to_string()))?;
+
+        let mut config = Config::load(&config_path)
+            .with_context(|| format!("failed to reload config: {}", config_path.display()))
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+        config.cache_simulation = new_config.clone();
+        config
+            .save()
+            .with_context(|| {
+                format!(
+                    "failed to persist cache simulation config: {}",
+                    config_path.display()
+                )
+            })
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        // 更新内存中的配置
+        *self.cache_simulation.write() = new_config;
+
+        Ok(CacheSimulationResponse {
+            enabled: req.enabled,
+            cache_hit_ratio: req.cache_hit_ratio,
+            cache_creation_ratio: req.cache_creation_ratio,
+            min_tokens_to_trigger: req.min_tokens_to_trigger,
+            cache_trigger_probability: req.cache_trigger_probability,
+            input_tokens_multiplier: req.input_tokens_multiplier,
+            output_tokens_multiplier: req.output_tokens_multiplier,
+            random_multiplier: req.random_multiplier,
+            input_multiplier_min: req.input_multiplier_min,
+            input_multiplier_max: req.input_multiplier_max,
+            output_multiplier_min: req.output_multiplier_min,
+            output_multiplier_max: req.output_multiplier_max,
+            force_override: req.force_override,
+            force_input_tokens: req.force_input_tokens,
+            force_output_tokens: req.force_output_tokens,
+            force_cache_read_tokens: req.force_cache_read_tokens,
+            force_cache_creation_tokens: req.force_cache_creation_tokens,
+        })
     }
 
     // ============ 余额缓存持久化 ============

@@ -196,6 +196,150 @@ pub struct SetLoadBalancingModeRequest {
     pub mode: String,
 }
 
+/// 默认系统提示词响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemPromptResponse {
+    pub default_system_prompt: String,
+}
+
+/// 设置默认系统提示词请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSystemPromptRequest {
+    pub default_system_prompt: String,
+}
+
+// ============ 模型级系统提示词映射 ============
+
+/// 模型级系统提示词映射响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSystemPromptsResponse {
+    /// 模型名称 → 专用系统提示词
+    pub model_system_prompts: std::collections::HashMap<String, String>,
+    /// 注入位置："prepend" 或 "append"
+    pub system_prompt_position: String,
+}
+
+/// 设置模型级系统提示词映射请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetModelSystemPromptsRequest {
+    /// 模型名称 → 专用系统提示词
+    pub model_system_prompts: std::collections::HashMap<String, String>,
+    /// 注入位置："prepend" 或 "append"
+    #[serde(default = "default_prompt_position")]
+    pub system_prompt_position: String,
+}
+
+fn default_prompt_position() -> String {
+    "prepend".to_string()
+}
+
+// ============ 缓存模拟配置 ============
+
+/// 缓存模拟配置响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheSimulationResponse {
+    /// 是否启用
+    pub enabled: bool,
+    /// 缓存命中比例（0.0-1.0）
+    pub cache_hit_ratio: f64,
+    /// 缓存写入比例（0.0-1.0）
+    pub cache_creation_ratio: f64,
+    /// 最小触发阈值
+    pub min_tokens_to_trigger: i32,
+    /// 缓存模拟触发概率（0.0-1.0）
+    pub cache_trigger_probability: f64,
+    /// Input token 倍率（0.01-1.0）
+    pub input_tokens_multiplier: f64,
+    /// Output token 倍率（0.01-1.0）
+    pub output_tokens_multiplier: f64,
+    /// 是否启用随机倍率
+    pub random_multiplier: bool,
+    /// Input 随机倍率下限
+    pub input_multiplier_min: f64,
+    /// Input 随机倍率上限
+    pub input_multiplier_max: f64,
+    /// Output 随机倍率下限
+    pub output_multiplier_min: f64,
+    /// Output 随机倍率上限
+    pub output_multiplier_max: f64,
+    /// 是否启用强制覆盖模式
+    pub force_override: bool,
+    /// 强制覆盖：input_tokens 固定值
+    pub force_input_tokens: i32,
+    /// 强制覆盖：output_tokens 固定值
+    pub force_output_tokens: i32,
+    /// 强制覆盖：cache_read_input_tokens 固定值
+    pub force_cache_read_tokens: i32,
+    /// 强制覆盖：cache_creation_input_tokens 固定值
+    pub force_cache_creation_tokens: i32,
+}
+
+/// 设置缓存模拟配置请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCacheSimulationRequest {
+    /// 是否启用
+    pub enabled: bool,
+    /// 缓存命中比例（0.0-1.0）
+    pub cache_hit_ratio: f64,
+    /// 缓存写入比例（0.0-1.0）
+    pub cache_creation_ratio: f64,
+    /// 最小触发阈值
+    pub min_tokens_to_trigger: i32,
+    /// 缓存模拟触发概率（0.0-1.0）
+    #[serde(default = "default_multiplier")]
+    pub cache_trigger_probability: f64,
+    /// Input token 倍率（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub input_tokens_multiplier: f64,
+    /// Output token 倍率（0.01-1.0）
+    #[serde(default = "default_multiplier")]
+    pub output_tokens_multiplier: f64,
+    /// 是否启用随机倍率
+    #[serde(default)]
+    pub random_multiplier: bool,
+    /// Input 随机倍率下限
+    #[serde(default = "default_random_min")]
+    pub input_multiplier_min: f64,
+    /// Input 随机倍率上限
+    #[serde(default = "default_multiplier")]
+    pub input_multiplier_max: f64,
+    /// Output 随机倍率下限
+    #[serde(default = "default_random_min")]
+    pub output_multiplier_min: f64,
+    /// Output 随机倍率上限
+    #[serde(default = "default_multiplier")]
+    pub output_multiplier_max: f64,
+    /// 是否启用强制覆盖模式
+    #[serde(default)]
+    pub force_override: bool,
+    /// 强制覆盖：input_tokens 固定值
+    #[serde(default)]
+    pub force_input_tokens: i32,
+    /// 强制覆盖：output_tokens 固定值
+    #[serde(default)]
+    pub force_output_tokens: i32,
+    /// 强制覆盖：cache_read_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_read_tokens: i32,
+    /// 强制覆盖：cache_creation_input_tokens 固定值
+    #[serde(default)]
+    pub force_cache_creation_tokens: i32,
+}
+
+fn default_multiplier() -> f64 {
+    1.0
+}
+
+fn default_random_min() -> f64 {
+    0.05
+}
+
 // ============ 通用响应 ============
 
 /// 操作成功响应

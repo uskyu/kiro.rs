@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use clap::Parser;
+use parking_lot::RwLock;
 use kiro::endpoint::{IdeEndpoint, KiroEndpoint};
 use kiro::model::credentials::{CredentialsConfig, KiroCredentials};
 use kiro::provider::KiroProvider;
@@ -141,6 +142,9 @@ async fn main() {
         std::process::exit(1);
     });
     let token_manager = Arc::new(token_manager);
+    let default_system_prompt = Arc::new(RwLock::new(config.default_system_prompt.clone()));
+    let system_prompt_position = Arc::new(RwLock::new(config.system_prompt_position.clone()));
+    let model_system_prompts = Arc::new(RwLock::new(config.model_system_prompts.clone()));
     let kiro_provider = KiroProvider::with_proxy(
         token_manager.clone(),
         proxy_config.clone(),
@@ -157,6 +161,9 @@ async fn main() {
         tls_backend: config.tls_backend,
     });
 
+    // 初始化缓存模拟配置（可通过 Admin API 动态修改）
+    let cache_simulation = Arc::new(RwLock::new(config.cache_simulation.clone()));
+
     // 创建共享的并发计数器
     let concurrency = anthropic::ConcurrencyCounter::new();
 
@@ -165,6 +172,10 @@ async fn main() {
         &api_key,
         Some(kiro_provider),
         config.extract_thinking,
+        default_system_prompt.clone(),
+        system_prompt_position.clone(),
+        model_system_prompts.clone(),
+        cache_simulation.clone(),
         concurrency.clone(),
     );
 
@@ -182,7 +193,14 @@ async fn main() {
             anthropic_app
         } else {
             let admin_service =
-                admin::AdminService::new(token_manager.clone(), endpoint_names.clone());
+                admin::AdminService::new(
+                    token_manager.clone(),
+                    endpoint_names.clone(),
+                    default_system_prompt.clone(),
+                    system_prompt_position.clone(),
+                    model_system_prompts.clone(),
+                    cache_simulation.clone(),
+                );
             let admin_state = admin::AdminState::new(admin_key, admin_service, concurrency.clone());
             let admin_app = admin::create_admin_router(admin_state);
 

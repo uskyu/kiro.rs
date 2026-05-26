@@ -6,8 +6,14 @@ import type {
   SuccessResponse,
   SetDisabledRequest,
   SetPriorityRequest,
+  SetSystemPromptRequest,
+  SystemPromptResponse,
   AddCredentialRequest,
   AddCredentialResponse,
+  CacheSimulationResponse,
+  SetCacheSimulationRequest,
+  ModelSystemPromptsResponse,
+  SetModelSystemPromptsRequest,
 } from '@/types/api'
 
 // 创建 axios 实例
@@ -105,7 +111,53 @@ export async function setLoadBalancingMode(mode: 'priority' | 'balanced'): Promi
   return data
 }
 
-// 获取实时统计信息
+export async function getSystemPrompt(): Promise<SystemPromptResponse> {
+  const { data } = await api.get<SystemPromptResponse>('/config/system-prompt')
+  return data
+}
+
+export async function setSystemPrompt(
+  defaultSystemPrompt: string
+): Promise<SystemPromptResponse> {
+  const { data } = await api.put<SystemPromptResponse>(
+    '/config/system-prompt',
+    { defaultSystemPrompt } as SetSystemPromptRequest
+  )
+  return data
+}
+
+// 获取缓存模拟配置
+export async function getCacheSimulation(): Promise<CacheSimulationResponse> {
+  const { data } = await api.get<CacheSimulationResponse>('/config/cache-simulation')
+  return data
+}
+
+// 设置缓存模拟配置
+export async function setCacheSimulation(
+  config: SetCacheSimulationRequest
+): Promise<CacheSimulationResponse> {
+  const { data } = await api.put<CacheSimulationResponse>('/config/cache-simulation', config)
+  return data
+}
+
+// 获取模型级系统提示词映射
+export async function getModelSystemPrompts(): Promise<ModelSystemPromptsResponse> {
+  const { data } = await api.get<ModelSystemPromptsResponse>('/config/model-system-prompts')
+  return data
+}
+
+// 设置模型级系统提示词映射
+export async function setModelSystemPrompts(
+  req: SetModelSystemPromptsRequest
+): Promise<ModelSystemPromptsResponse> {
+  const { data } = await api.put<ModelSystemPromptsResponse>(
+    '/config/model-system-prompts',
+    req
+  )
+  return data
+}
+
+// 获取实时并发统计
 export interface StatsResponse {
   active_requests: number
   total_requests: number
