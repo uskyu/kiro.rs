@@ -1,6 +1,7 @@
 //! Anthropic API 中间件
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::{
     body::Body,
@@ -16,6 +17,55 @@ use crate::kiro::provider::KiroProvider;
 use crate::model::config::CacheSimulationConfig;
 
 use super::types::ErrorResponse;
+
+/// 全局并发请求计数器
+///
+/// 追踪当前正在处理的 /v1/messages 请求数量
+#[derive(Clone, Default)]
+pub struct ConcurrencyCounter {
+    inner: Arc<AtomicU64>,
+    /// 历史总请求数
+    total: Arc<AtomicU64>,
+}
+
+impl ConcurrencyCounter {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(AtomicU64::new(0)),
+            total: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// 进入请求，返回一个 guard，drop 时自动减少计数
+    pub fn enter(&self) -> ConcurrencyGuard {
+        self.inner.fetch_add(1, Ordering::Relaxed);
+        self.total.fetch_add(1, Ordering::Relaxed);
+        ConcurrencyGuard {
+            counter: self.inner.clone(),
+        }
+    }
+
+    /// 获取当前并发数
+    pub fn current(&self) -> u64 {
+        self.inner.load(Ordering::Relaxed)
+    }
+
+    /// 获取历史总请求数
+    pub fn total_requests(&self) -> u64 {
+        self.total.load(Ordering::Relaxed)
+    }
+}
+
+/// RAII guard，drop 时自动减少并发计数
+pub struct ConcurrencyGuard {
+    counter: Arc<AtomicU64>,
+}
+
+impl Drop for ConcurrencyGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 /// 应用共享状态
 #[derive(Clone)]
@@ -35,6 +85,8 @@ pub struct AppState {
     pub model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
     /// 缓存模拟配置（可通过 Admin API 动态修改）
     pub cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
+    /// 并发请求计数器
+    pub concurrency: ConcurrencyCounter,
 }
 
 impl AppState {
@@ -55,12 +107,19 @@ impl AppState {
             system_prompt_position,
             model_system_prompts,
             cache_simulation,
+            concurrency: ConcurrencyCounter::new(),
         }
     }
 
     /// 设置 KiroProvider
     pub fn with_kiro_provider(mut self, provider: KiroProvider) -> Self {
         self.kiro_provider = Some(Arc::new(provider));
+        self
+    }
+
+    /// 设置并发计数器（用于与 Admin API 共享）
+    pub fn with_concurrency(mut self, concurrency: ConcurrencyCounter) -> Self {
+        self.concurrency = concurrency;
         self
     }
 }

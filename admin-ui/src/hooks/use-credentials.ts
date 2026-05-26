@@ -16,6 +16,7 @@ import {
   setCacheSimulation,
   getModelSystemPrompts,
   setModelSystemPrompts,
+  getStats,
 } from '@/api/credentials'
 import type { AddCredentialRequest, SetCacheSimulationRequest } from '@/types/api'
 
@@ -175,5 +176,14 @@ export function useSetModelSystemPrompts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['modelSystemPrompts'] })
     },
+  })
+}
+
+// 实时并发统计
+export function useStats() {
+  return useQuery({
+    queryKey: ['stats'],
+    queryFn: getStats,
+    refetchInterval: 3000, // 每 3 秒刷新
   })
 }

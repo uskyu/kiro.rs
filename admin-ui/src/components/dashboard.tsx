@@ -14,7 +14,7 @@ import { KamImportDialog } from '@/components/kam-import-dialog'
 import { BatchVerifyDialog, type VerifyResult } from '@/components/batch-verify-dialog'
 import { CacheSimulationPanel } from '@/components/cache-simulation-panel'
 import { ModelPromptsPanel } from '@/components/model-prompts-panel'
-import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-credentials'
+import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt, useStats } from '@/hooks/use-credentials'
 import { getCredentialBalance, forceRefreshToken } from '@/api/credentials'
 import { extractErrorMessage } from '@/lib/utils'
 import type { BalanceResponse } from '@/types/api'
@@ -58,6 +58,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const { mutate: setLoadBalancingMode, isPending: isSettingMode } = useSetLoadBalancingMode()
   const { data: systemPromptData, isLoading: isLoadingSystemPrompt } = useSystemPrompt()
   const { mutate: saveSystemPrompt, isPending: isSavingSystemPrompt } = useSetSystemPrompt()
+  const { data: statsData } = useStats()
   const [systemPromptDraft, setSystemPromptDraft] = useState('')
 
   // 计算分页
@@ -593,7 +594,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       {/* 主内容 */}
       <main className="container mx-auto px-4 md:px-8 py-6">
         {/* 统计卡片 */}
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <div className="grid gap-4 md:grid-cols-4 mb-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -624,6 +625,19 @@ export function Dashboard({ onLogout }: DashboardProps) {
               <div className="text-2xl font-bold flex items-center gap-2">
                 #{data?.currentId || '-'}
                 <Badge variant="success">活跃</Badge>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                并发请求
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold flex items-center gap-2">
+                <span className="text-blue-600">{statsData?.active_requests ?? 0}</span>
+                <span className="text-sm font-normal text-muted-foreground">/ 累计 {statsData?.total_requests ?? 0}</span>
               </div>
             </CardContent>
           </Card>

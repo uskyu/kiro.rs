@@ -14,27 +14,11 @@ use crate::model::config::CacheSimulationConfig;
 
 use super::{
     handlers::{count_tokens, get_models, post_messages, post_messages_cc},
-    middleware::{AppState, auth_middleware, cors_layer},
+    middleware::{AppState, ConcurrencyCounter, auth_middleware, cors_layer},
 };
 
 /// 请求体最大大小限制 (50MB)
 const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
-
-/// 创建 Anthropic API 路由
-///
-/// # 端点
-/// - `GET /v1/models` - 获取可用模型列表
-/// - `POST /v1/messages` - 创建消息（对话）
-/// - `POST /v1/messages/count_tokens` - 计算 token 数量
-///
-/// # 认证
-/// 所有 `/v1` 路径需要 API Key 认证，支持：
-/// - `x-api-key` header
-/// - `Authorization: Bearer <token>` header
-///
-/// # 参数
-/// - `api_key`: API 密钥，用于验证客户端请求
-/// - `kiro_provider`: 可选的 KiroProvider，用于调用上游 API
 
 /// 创建带有 KiroProvider 的 Anthropic API 路由
 pub fn create_router_with_provider(
@@ -45,8 +29,10 @@ pub fn create_router_with_provider(
     system_prompt_position: Arc<RwLock<String>>,
     model_system_prompts: Arc<RwLock<std::collections::HashMap<String, String>>>,
     cache_simulation: Arc<RwLock<CacheSimulationConfig>>,
+    concurrency: ConcurrencyCounter,
 ) -> Router {
-    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt, system_prompt_position, model_system_prompts, cache_simulation);
+    let mut state = AppState::new(api_key, extract_thinking, default_system_prompt, system_prompt_position, model_system_prompts, cache_simulation)
+        .with_concurrency(concurrency);
     if let Some(provider) = kiro_provider {
         state = state.with_kiro_provider(provider);
     }

@@ -1,0 +1,10 @@
+{
+  "host": "0.0.0.0",
+  "port": 8990,
+  "apiKey": "sk-kiro-change-me",
+  "adminApiKey": "sk-admin-change-me",
+  "tlsBackend": "rustls",
+  "region": "us-east-1",
+  "defaultEndpoint": "ide",
+  "extractThinking": true
+}

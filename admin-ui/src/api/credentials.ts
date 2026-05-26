@@ -156,3 +156,14 @@ export async function setModelSystemPrompts(
   )
   return data
 }
+
+// 获取实时并发统计
+export interface StatsResponse {
+  active_requests: number
+  total_requests: number
+}
+
+export async function getStats(): Promise<StatsResponse> {
+  const { data } = await api.get<StatsResponse>('/stats')
+  return data
+}

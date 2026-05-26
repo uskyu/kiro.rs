@@ -198,3 +198,13 @@ pub async fn set_cache_simulation(
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }
 }
+
+/// GET /api/admin/stats
+/// 获取实时并发统计
+pub async fn get_stats(State(state): State<AdminState>) -> impl IntoResponse {
+    let response = serde_json::json!({
+        "active_requests": state.concurrency.current(),
+        "total_requests": state.concurrency.total_requests(),
+    });
+    Json(response)
+}

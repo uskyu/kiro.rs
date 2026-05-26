@@ -379,6 +379,7 @@ pub async fn post_messages(
     State(state): State<AppState>,
     JsonExtractor(mut payload): JsonExtractor<MessagesRequest>,
 ) -> Response {
+    let _guard = state.concurrency.enter();
     tracing::info!(
         model = %payload.model,
         max_tokens = %payload.max_tokens,
@@ -909,6 +910,7 @@ pub async fn post_messages_cc(
     State(state): State<AppState>,
     JsonExtractor(mut payload): JsonExtractor<MessagesRequest>,
 ) -> Response {
+    let _guard = state.concurrency.enter();
     tracing::info!(
         model = %payload.model,
         max_tokens = %payload.max_tokens,
