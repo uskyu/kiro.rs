@@ -109,49 +109,6 @@ fn random_in_range(min: f64, max: f64) -> f64 {
     min + fastrand::f64() * range
 }
 
-    // 计算最终报告值：强制覆盖(>0)优先，否则走倍率
-    let reported_input = if cache_config.force_input_tokens > 0 {
-        cache_config.force_input_tokens
-    } else {
-        (input_tokens as f64 * cache_config.input_tokens_multiplier).max(1.0) as i32
-    };
-
-    let reported_output = if cache_config.force_output_tokens > 0 {
-        cache_config.force_output_tokens
-    } else {
-        (output_tokens as f64 * cache_config.output_tokens_multiplier).max(1.0) as i32
-    };
-
-    // 缓存字段：强制覆盖(>0)优先，否则按缓存模拟比例计算
-    let cache_read = if cache_config.force_cache_read_tokens > 0 {
-        cache_config.force_cache_read_tokens
-    } else if input_tokens >= cache_config.min_tokens_to_trigger {
-        (reported_input as f64 * cache_config.cache_hit_ratio) as i32
-    } else {
-        0
-    };
-
-    let cache_creation = if cache_config.force_cache_creation_tokens > 0 {
-        cache_config.force_cache_creation_tokens
-    } else if input_tokens >= cache_config.min_tokens_to_trigger {
-        (reported_input as f64 * cache_config.cache_creation_ratio) as i32
-    } else {
-        0
-    };
-
-    let mut usage = json!({
-        "input_tokens": reported_input,
-        "output_tokens": reported_output
-    });
-    if cache_read > 0 {
-        usage["cache_read_input_tokens"] = json!(cache_read);
-    }
-    if cache_creation > 0 {
-        usage["cache_creation_input_tokens"] = json!(cache_creation);
-    }
-    usage
-}
-
 /// 将 KiroProvider 错误映射为 HTTP 响应
 fn map_provider_error(err: Error) -> Response {
     let err_str = err.to_string();
