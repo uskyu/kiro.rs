@@ -220,6 +220,9 @@ pub async fn post_messages(
         }
     };
 
+    // 并发计数 +1（guard drop 时自动 -1）
+    let _concurrency_guard = state.concurrency.enter();
+
     // 检测模型名是否包含 "thinking" 后缀，若包含则覆写 thinking 配置
     override_thinking_from_model_name(&mut payload);
 
@@ -732,6 +735,9 @@ pub async fn post_messages_cc(
                 .into_response();
         }
     };
+
+    // 并发计数 +1（guard drop 时自动 -1）
+    let _concurrency_guard = state.concurrency.enter();
 
     // 检测模型名是否包含 "thinking" 后缀，若包含则覆写 thinking 配置
     override_thinking_from_model_name(&mut payload);

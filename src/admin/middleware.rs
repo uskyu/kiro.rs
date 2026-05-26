@@ -12,6 +12,7 @@ use axum::{
 
 use super::service::AdminService;
 use super::types::AdminErrorResponse;
+use crate::anthropic::ConcurrencyCounter;
 use crate::common::auth;
 
 /// Admin API 共享状态
@@ -21,13 +22,20 @@ pub struct AdminState {
     pub admin_api_key: String,
     /// Admin 服务
     pub service: Arc<AdminService>,
+    /// 并发请求计数器（与 Anthropic API 共享）
+    pub concurrency: ConcurrencyCounter,
 }
 
 impl AdminState {
-    pub fn new(admin_api_key: impl Into<String>, service: AdminService) -> Self {
+    pub fn new(
+        admin_api_key: impl Into<String>,
+        service: AdminService,
+        concurrency: ConcurrencyCounter,
+    ) -> Self {
         Self {
             admin_api_key: admin_api_key.into(),
             service: Arc::new(service),
+            concurrency,
         }
     }
 }

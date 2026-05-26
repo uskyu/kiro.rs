@@ -140,3 +140,12 @@ pub async fn set_load_balancing_mode(
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }
 }
+
+/// GET /api/admin/stats
+/// 获取实时统计信息（并发数、总请求数）
+pub async fn get_stats(State(state): State<AdminState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "active_requests": state.concurrency.current(),
+        "total_requests": state.concurrency.total_requests(),
+    }))
+}

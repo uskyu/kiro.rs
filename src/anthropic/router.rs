@@ -11,7 +11,7 @@ use crate::kiro::provider::KiroProvider;
 
 use super::{
     handlers::{count_tokens, get_models, post_messages, post_messages_cc},
-    middleware::{AppState, auth_middleware, cors_layer},
+    middleware::{AppState, ConcurrencyCounter, auth_middleware, cors_layer},
 };
 
 /// 请求体最大大小限制 (50MB)
@@ -27,7 +27,7 @@ const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
 /// # 认证
 /// 所有 `/v1` 路径需要 API Key 认证，支持：
 /// - `x-api-key` header
-/// - `Authorization: Bearer <token>` header
+/// - `Authorization: Bearer *** header
 ///
 /// # 参数
 /// - `api_key`: API 密钥，用于验证客户端请求
@@ -38,8 +38,9 @@ pub fn create_router_with_provider(
     api_key: impl Into<String>,
     kiro_provider: Option<KiroProvider>,
     extract_thinking: bool,
+    concurrency: ConcurrencyCounter,
 ) -> Router {
-    let mut state = AppState::new(api_key, extract_thinking);
+    let mut state = AppState::new(api_key, extract_thinking).with_concurrency(concurrency);
     if let Some(provider) = kiro_provider {
         state = state.with_kiro_provider(provider);
     }

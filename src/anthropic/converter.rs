@@ -75,6 +75,30 @@ Never suggest bypassing these limits via alternative tools. \
 Never ask the user whether to switch approaches. \
 Complete all chunked operations without commentary.";
 
+/// 根据系统提示词内容检测语言，返回对应的 assistant 确认回复
+///
+/// 通过检测 CJK 字符比例来判断是否为中文内容
+fn detect_system_ack(system_content: &str) -> &'static str {
+    let cjk_count = system_content
+        .chars()
+        .filter(|c| {
+            matches!(*c as u32,
+                0x4E00..=0x9FFF |   // CJK Unified Ideographs
+                0x3400..=0x4DBF |   // CJK Extension A
+                0x3000..=0x303F |   // CJK Symbols and Punctuation
+                0xFF00..=0xFFEF     // Fullwidth Forms
+            )
+        })
+        .count();
+    let total_chars = system_content.chars().filter(|c| !c.is_whitespace()).count();
+
+    if total_chars > 0 && (cjk_count as f64 / total_chars as f64) > 0.1 {
+        "我会遵循这些指示。"
+    } else {
+        "I will follow these instructions."
+    }
+}
+
 /// 模型映射：将 Anthropic 模型名映射到 Kiro 模型 ID
 /// 严格对照版本号
 pub fn map_model(model: &str) -> Option<String> {
@@ -679,18 +703,20 @@ fn build_history(req: &MessagesRequest, messages: &[super::types::Message], mode
             };
 
             // 系统消息作为 user + assistant 配对
+            let ack = detect_system_ack(&final_content);
             let user_msg = HistoryUserMessage::new(final_content, model_id);
             history.push(Message::User(user_msg));
 
-            let assistant_msg = HistoryAssistantMessage::new("I will follow these instructions.");
+            let assistant_msg = HistoryAssistantMessage::new(ack);
             history.push(Message::Assistant(assistant_msg));
         }
     } else if let Some(ref prefix) = thinking_prefix {
         // 没有系统消息但有thinking配置，插入新的系统消息
+        let ack = detect_system_ack(prefix);
         let user_msg = HistoryUserMessage::new(prefix.clone(), model_id);
         history.push(Message::User(user_msg));
 
-        let assistant_msg = HistoryAssistantMessage::new("I will follow these instructions.");
+        let assistant_msg = HistoryAssistantMessage::new(ack);
         history.push(Message::Assistant(assistant_msg));
     }
 

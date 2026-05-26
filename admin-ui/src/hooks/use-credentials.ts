@@ -10,6 +10,7 @@ import {
   deleteCredential,
   getLoadBalancingMode,
   setLoadBalancingMode,
+  getStats,
 } from '@/api/credentials'
 import type { AddCredentialRequest } from '@/types/api'
 
@@ -116,5 +117,14 @@ export function useSetLoadBalancingMode() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loadBalancingMode'] })
     },
+  })
+}
+
+// 获取实时统计信息
+export function useStats() {
+  return useQuery({
+    queryKey: ['stats'],
+    queryFn: getStats,
+    refetchInterval: 3000, // 每 3 秒刷新一次
   })
 }

@@ -104,3 +104,14 @@ export async function setLoadBalancingMode(mode: 'priority' | 'balanced'): Promi
   const { data } = await api.put<{ mode: 'priority' | 'balanced' }>('/config/load-balancing', { mode })
   return data
 }
+
+// 获取实时统计信息
+export interface StatsResponse {
+  active_requests: number
+  total_requests: number
+}
+
+export async function getStats(): Promise<StatsResponse> {
+  const { data } = await api.get<StatsResponse>('/stats')
+  return data
+}
