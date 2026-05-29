@@ -11,7 +11,7 @@ use super::{
     types::{
         AddCredentialRequest, SetCacheSimulationRequest, SetDisabledRequest,
         SetLoadBalancingModeRequest, SetModelSystemPromptsRequest, SetPriorityRequest,
-        SetSystemPromptRequest, SuccessResponse,
+        SetSystemPromptRequest, SuccessResponse, UpdateCredentialRequest,
     },
 };
 
@@ -67,6 +67,19 @@ pub async fn reset_failure_count(
             id
         )))
         .into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// PUT /api/admin/credentials/:id
+/// 更新凭据配置
+pub async fn update_credential(
+    State(state): State<AdminState>,
+    Path(id): Path<u64>,
+    Json(payload): Json<UpdateCredentialRequest>,
+) -> impl IntoResponse {
+    match state.service.update_credential(id, payload) {
+        Ok(_) => Json(SuccessResponse::new(format!("凭据 #{} 配置已更新", id))).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }
 }

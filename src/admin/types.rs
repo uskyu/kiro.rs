@@ -139,6 +139,51 @@ pub struct AddCredentialRequest {
     pub endpoint: Option<String>,
 }
 
+/// 更新凭据请求（仅允许修改运行时配置字段）
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCredentialRequest {
+    /// 代理 URL（null=清空, 字符串=设置, 字段不存在=不修改）
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub proxy_url: Option<Option<String>>,
+
+    /// 代理用户名
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub proxy_username: Option<Option<String>>,
+
+    /// 代理密码
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub proxy_password: Option<Option<String>>,
+
+    /// 端点名称
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub endpoint: Option<Option<String>>,
+
+    /// Auth Region
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub auth_region: Option<Option<String>>,
+
+    /// API Region
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub api_region: Option<Option<String>>,
+
+    /// Machine ID
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub machine_id: Option<Option<String>>,
+}
+
+/// 反序列化 Option<Option<String>>：
+/// - 字段不存在 → None（不修改）
+/// - 字段为 null → Some(None)（清空）
+/// - 字段为字符串 → Some(Some(value))（设置）
+fn deserialize_optional_field<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(Some(value))
+}
+
 fn default_auth_method() -> String {
     "social".to_string()
 }

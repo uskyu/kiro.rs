@@ -16,6 +16,7 @@ import type {
   SetModelSystemPromptsRequest,
   FreezeConfigResponse,
   SetFreezeConfigRequest,
+  UpdateCredentialRequest,
 } from '@/types/api'
 
 // 创建 axios 实例
@@ -181,5 +182,14 @@ export async function setFreezeConfig(
   config: SetFreezeConfigRequest
 ): Promise<FreezeConfigResponse> {
   const { data } = await api.put<FreezeConfigResponse>('/config/freeze', config)
+  return data
+}
+
+// 更新凭据配置
+export async function updateCredential(
+  id: number,
+  req: UpdateCredentialRequest
+): Promise<SuccessResponse> {
+  const { data } = await api.put<SuccessResponse>(`/credentials/${id}`, req)
   return data
 }

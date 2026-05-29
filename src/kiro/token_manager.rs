@@ -2053,6 +2053,58 @@ impl MultiTokenManager {
         Ok(())
     }
 
+    /// 更新凭据配置字段（Admin API）
+    ///
+    /// 允许修改代理、端点、区域等运行时配置，不允许修改核心认证字段。
+    /// 修改后立即持久化到凭据文件。
+    pub fn update_credential(
+        &self,
+        id: u64,
+        proxy_url: Option<Option<String>>,
+        proxy_username: Option<Option<String>>,
+        proxy_password: Option<Option<String>>,
+        endpoint: Option<Option<String>>,
+        auth_region: Option<Option<String>>,
+        api_region: Option<Option<String>>,
+        machine_id: Option<Option<String>>,
+    ) -> anyhow::Result<()> {
+        {
+            let mut entries = self.entries.lock();
+            let entry = entries
+                .iter_mut()
+                .find(|e| e.id == id)
+                .ok_or_else(|| anyhow::anyhow!("凭据不存在: {}", id))?;
+
+            // 更新各字段（Option<Option<String>>: None=不修改, Some(None)=清空, Some(Some(v))=设置）
+            if let Some(v) = proxy_url {
+                entry.credentials.proxy_url = v;
+            }
+            if let Some(v) = proxy_username {
+                entry.credentials.proxy_username = v;
+            }
+            if let Some(v) = proxy_password {
+                entry.credentials.proxy_password = v;
+            }
+            if let Some(v) = endpoint {
+                entry.credentials.endpoint = v;
+            }
+            if let Some(v) = auth_region {
+                entry.credentials.auth_region = v;
+            }
+            if let Some(v) = api_region {
+                entry.credentials.api_region = v;
+            }
+            if let Some(v) = machine_id {
+                entry.credentials.machine_id = v;
+            }
+        }
+
+        // 持久化更改
+        self.persist_credentials()?;
+        tracing::info!("已更新凭据 #{} 配置", id);
+        Ok(())
+    }
+
     /// 强制刷新指定凭据的 Token（Admin API）
     ///
     /// 无条件调用上游 API 重新获取 access token，不检查是否过期。

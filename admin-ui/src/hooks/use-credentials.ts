@@ -19,8 +19,9 @@ import {
   getStats,
   getFreezeConfig,
   setFreezeConfig,
+  updateCredential,
 } from '@/api/credentials'
-import type { AddCredentialRequest, SetCacheSimulationRequest, SetFreezeConfigRequest } from '@/types/api'
+import type { AddCredentialRequest, SetCacheSimulationRequest, SetFreezeConfigRequest, UpdateCredentialRequest } from '@/types/api'
 
 // 查询凭据列表
 export function useCredentials() {
@@ -204,6 +205,18 @@ export function useSetFreezeConfig() {
     mutationFn: (config: SetFreezeConfigRequest) => setFreezeConfig(config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['freezeConfig'] })
+    },
+  })
+}
+
+// 更新凭据配置
+export function useUpdateCredential() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateCredentialRequest }) =>
+      updateCredential(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credentials'] })
     },
   })
 }

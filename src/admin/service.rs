@@ -292,6 +292,22 @@ impl AdminService {
         Ok(())
     }
 
+    /// 更新凭据配置
+    pub fn update_credential(&self, id: u64, req: super::types::UpdateCredentialRequest) -> Result<(), AdminServiceError> {
+        self.token_manager
+            .update_credential(
+                id,
+                req.proxy_url,
+                req.proxy_username,
+                req.proxy_password,
+                req.endpoint,
+                req.auth_region,
+                req.api_region,
+                req.machine_id,
+            )
+            .map_err(|e| self.classify_error(e, id))
+    }
+
     /// 获取负载均衡模式
     pub fn get_load_balancing_mode(&self) -> LoadBalancingModeResponse {
         LoadBalancingModeResponse {

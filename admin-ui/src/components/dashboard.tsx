@@ -15,6 +15,7 @@ import { BatchVerifyDialog, type VerifyResult } from '@/components/batch-verify-
 import { CacheSimulationPanel } from '@/components/cache-simulation-panel'
 import { ModelPromptsPanel } from '@/components/model-prompts-panel'
 import { FreezeConfigPanel } from '@/components/freeze-config-panel'
+import { EditCredentialDialog } from '@/components/edit-credential-dialog'
 import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt, useStats } from '@/hooks/use-credentials'
 import { getCredentialBalance, forceRefreshToken } from '@/api/credentials'
 import { extractErrorMessage } from '@/lib/utils'
@@ -32,6 +33,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [kamImportDialogOpen, setKamImportDialogOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingCredential, setEditingCredential] = useState<import('@/types/api').CredentialStatusItem | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [verifyProgress, setVerifyProgress] = useState({ current: 0, total: 0 })
   const [verifyResults, setVerifyResults] = useState<Map<number, VerifyResult>>(new Map())
@@ -126,6 +129,11 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const handleViewBalance = (id: number) => {
     setSelectedCredentialId(id)
     setBalanceDialogOpen(true)
+  }
+
+  const handleEditCredential = (credential: import('@/types/api').CredentialStatusItem) => {
+    setEditingCredential(credential)
+    setEditDialogOpen(true)
   }
 
   const handleRefresh = () => {
@@ -790,6 +798,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     key={credential.id}
                     credential={credential}
                     onViewBalance={handleViewBalance}
+                    onEdit={handleEditCredential}
                     selected={selectedIds.has(credential.id)}
                     onToggleSelect={() => toggleSelect(credential.id)}
                     balance={balanceMap.get(credential.id) || null}
@@ -860,6 +869,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
         progress={verifyProgress}
         results={verifyResults}
         onCancel={handleCancelVerify}
+      />
+
+      {/* 编辑凭据对话框 */}
+      <EditCredentialDialog
+        credential={editingCredential}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
       />
     </div>
   )

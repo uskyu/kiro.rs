@@ -165,3 +165,14 @@ export interface FreezeConfigResponse {
 }
 
 export type SetFreezeConfigRequest = FreezeConfigResponse
+
+// 更新凭据请求
+export interface UpdateCredentialRequest {
+  proxyUrl?: string | null
+  proxyUsername?: string | null
+  proxyPassword?: string | null
+  endpoint?: string | null
+  authRegion?: string | null
+  apiRegion?: string | null
+  machineId?: string | null
+}
