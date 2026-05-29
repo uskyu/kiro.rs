@@ -17,8 +17,10 @@ import {
   getModelSystemPrompts,
   setModelSystemPrompts,
   getStats,
+  getFreezeConfig,
+  setFreezeConfig,
 } from '@/api/credentials'
-import type { AddCredentialRequest, SetCacheSimulationRequest } from '@/types/api'
+import type { AddCredentialRequest, SetCacheSimulationRequest, SetFreezeConfigRequest } from '@/types/api'
 
 // 查询凭据列表
 export function useCredentials() {
@@ -185,5 +187,23 @@ export function useStats() {
     queryKey: ['stats'],
     queryFn: getStats,
     refetchInterval: 3000, // 每 3 秒刷新
+  })
+}
+
+// 冷冻配置
+export function useFreezeConfig() {
+  return useQuery({
+    queryKey: ['freezeConfig'],
+    queryFn: getFreezeConfig,
+  })
+}
+
+export function useSetFreezeConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (config: SetFreezeConfigRequest) => setFreezeConfig(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['freezeConfig'] })
+    },
   })
 }

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { RefreshCw, ChevronUp, ChevronDown, Wallet, Trash2, Loader2 } from 'lucide-react'
+import { RefreshCw, ChevronUp, ChevronDown, Wallet, Trash2, Loader2, Timer } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -60,6 +60,20 @@ export function CredentialCard({
   const [editingPriority, setEditingPriority] = useState(false)
   const [priorityValue, setPriorityValue] = useState(String(credential.priority))
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [freezeCountdown, setFreezeCountdown] = useState(credential.freezeRemainingSecs || 0)
+
+  // 冷冻倒计时
+  useEffect(() => {
+    setFreezeCountdown(credential.freezeRemainingSecs || 0)
+  }, [credential.freezeRemainingSecs])
+
+  useEffect(() => {
+    if (freezeCountdown <= 0) return
+    const timer = setInterval(() => {
+      setFreezeCountdown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [freezeCountdown > 0])
 
   const setDisabled = useSetDisabled()
   const setPriority = useSetPriority()
@@ -158,6 +172,13 @@ export function CredentialCard({
                 )}
                 {credential.disabled && (
                   <Badge variant="destructive">已禁用</Badge>
+                )}
+                {credential.disabled && freezeCountdown > 0 && (
+                  <Badge variant="warning" className="flex items-center gap-1">
+                    <Timer className="h-3 w-3" />
+                    {freezeCountdown}s
+                    {credential.freezeCount > 0 && ` (${credential.freezeCount}次)`}
+                  </Badge>
                 )}
                 {credential.disabled && credential.disabledReason && (
                   <Badge variant="outline">{credential.disabledReason}</Badge>

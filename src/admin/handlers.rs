@@ -208,3 +208,50 @@ pub async fn get_stats(State(state): State<AdminState>) -> impl IntoResponse {
     });
     Json(response)
 }
+
+/// GET /api/admin/config/freeze
+/// 获取冷冻配置
+pub async fn get_freeze_config(State(state): State<AdminState>) -> impl IntoResponse {
+    let config = state.freeze_config.read().clone();
+    Json(config)
+}
+
+/// PUT /api/admin/config/freeze
+/// 设置冷冻配置
+pub async fn set_freeze_config(
+    State(state): State<AdminState>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    // 解析并更新冷冻配置
+    let mut config = state.freeze_config.write();
+    if let Some(v) = payload.get("tooManyFailures") {
+        if let (Some(base), Some(max)) = (v.get("baseSecs").and_then(|x| x.as_u64()), v.get("maxSecs").and_then(|x| x.as_u64())) {
+            config["tooManyFailures"]["baseSecs"] = serde_json::json!(base);
+            config["tooManyFailures"]["maxSecs"] = serde_json::json!(max);
+        }
+    }
+    if let Some(v) = payload.get("tooManyRefreshFailures") {
+        if let (Some(base), Some(max)) = (v.get("baseSecs").and_then(|x| x.as_u64()), v.get("maxSecs").and_then(|x| x.as_u64())) {
+            config["tooManyRefreshFailures"]["baseSecs"] = serde_json::json!(base);
+            config["tooManyRefreshFailures"]["maxSecs"] = serde_json::json!(max);
+        }
+    }
+    if let Some(v) = payload.get("quotaExceeded") {
+        if let (Some(base), Some(max)) = (v.get("baseSecs").and_then(|x| x.as_u64()), v.get("maxSecs").and_then(|x| x.as_u64())) {
+            config["quotaExceeded"]["baseSecs"] = serde_json::json!(base);
+            config["quotaExceeded"]["maxSecs"] = serde_json::json!(max);
+        }
+    }
+    if let Some(v) = payload.get("invalidRefreshToken") {
+        if let (Some(base), Some(max)) = (v.get("baseSecs").and_then(|x| x.as_u64()), v.get("maxSecs").and_then(|x| x.as_u64())) {
+            config["invalidRefreshToken"]["baseSecs"] = serde_json::json!(base);
+            config["invalidRefreshToken"]["maxSecs"] = serde_json::json!(max);
+        }
+    }
+    if let Some(v) = payload.get("maxWaitForThawSecs").and_then(|x| x.as_u64()) {
+        config["maxWaitForThawSecs"] = serde_json::json!(v);
+    }
+    let result = config.clone();
+    drop(config);
+    Json(result)
+}

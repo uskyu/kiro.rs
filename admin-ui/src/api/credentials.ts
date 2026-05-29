@@ -14,6 +14,8 @@ import type {
   SetCacheSimulationRequest,
   ModelSystemPromptsResponse,
   SetModelSystemPromptsRequest,
+  FreezeConfigResponse,
+  SetFreezeConfigRequest,
 } from '@/types/api'
 
 // 创建 axios 实例
@@ -165,5 +167,19 @@ export interface StatsResponse {
 
 export async function getStats(): Promise<StatsResponse> {
   const { data } = await api.get<StatsResponse>('/stats')
+  return data
+}
+
+// 获取冷冻配置
+export async function getFreezeConfig(): Promise<FreezeConfigResponse> {
+  const { data } = await api.get<FreezeConfigResponse>('/config/freeze')
+  return data
+}
+
+// 设置冷冻配置
+export async function setFreezeConfig(
+  config: SetFreezeConfigRequest
+): Promise<FreezeConfigResponse> {
+  const { data } = await api.put<FreezeConfigResponse>('/config/freeze', config)
   return data
 }

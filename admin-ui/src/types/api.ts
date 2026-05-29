@@ -27,6 +27,8 @@ export interface CredentialStatusItem {
   refreshFailureCount: number
   disabledReason?: string
   endpoint: string
+  freezeRemainingSecs: number
+  freezeCount: number
 }
 
 // 余额响应
@@ -147,3 +149,19 @@ export interface AddCredentialResponse {
   credentialId: number
   email?: string
 }
+
+// 冷冻配置（各禁用原因独立设置）
+export interface FreezeConfigItem {
+  baseSecs: number
+  maxSecs: number
+}
+
+export interface FreezeConfigResponse {
+  tooManyFailures: FreezeConfigItem
+  tooManyRefreshFailures: FreezeConfigItem
+  quotaExceeded: FreezeConfigItem
+  invalidRefreshToken: FreezeConfigItem
+  maxWaitForThawSecs: number
+}
+
+export type SetFreezeConfigRequest = FreezeConfigResponse

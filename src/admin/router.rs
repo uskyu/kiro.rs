@@ -8,10 +8,11 @@ use axum::{
 use super::{
     handlers::{
         add_credential, delete_credential, force_refresh_token, get_all_credentials,
-        get_cache_simulation, get_credential_balance, get_load_balancing_mode,
-        get_model_system_prompts, get_stats, get_system_prompt, reset_failure_count,
-        set_cache_simulation, set_credential_disabled, set_credential_priority,
-        set_load_balancing_mode, set_model_system_prompts, set_system_prompt,
+        get_cache_simulation, get_credential_balance, get_freeze_config,
+        get_load_balancing_mode, get_model_system_prompts, get_stats, get_system_prompt,
+        reset_failure_count, set_cache_simulation, set_credential_disabled,
+        set_credential_priority, set_freeze_config, set_load_balancing_mode,
+        set_model_system_prompts, set_system_prompt,
     },
     middleware::{AdminState, admin_auth_middleware},
 };
@@ -61,6 +62,10 @@ pub fn create_admin_router(state: AdminState) -> Router {
         .route(
             "/config/cache-simulation",
             get(get_cache_simulation).put(set_cache_simulation),
+        )
+        .route(
+            "/config/freeze",
+            get(get_freeze_config).put(set_freeze_config),
         )
         .route("/stats", get(get_stats))
         .layer(middleware::from_fn_with_state(

@@ -14,6 +14,7 @@ import { KamImportDialog } from '@/components/kam-import-dialog'
 import { BatchVerifyDialog, type VerifyResult } from '@/components/batch-verify-dialog'
 import { CacheSimulationPanel } from '@/components/cache-simulation-panel'
 import { ModelPromptsPanel } from '@/components/model-prompts-panel'
+import { FreezeConfigPanel } from '@/components/freeze-config-panel'
 import { useCredentials, useDeleteCredential, useResetFailure, useLoadBalancingMode, useSetLoadBalancingMode, useSystemPrompt, useSetSystemPrompt, useStats } from '@/hooks/use-credentials'
 import { getCredentialBalance, forceRefreshToken } from '@/api/credentials'
 import { extractErrorMessage } from '@/lib/utils'
@@ -682,6 +683,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
         {/* 缓存模拟调控面板 */}
         <CacheSimulationPanel />
+
+        {/* 冷冻/解冻配置面板 */}
+        <FreezeConfigPanel />
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
