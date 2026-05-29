@@ -257,6 +257,24 @@ pub async fn get_models() -> impl IntoResponse {
 
     let models = vec![
         Model {
+            id: "claude-opus-4-8".to_string(),
+            object: "model".to_string(),
+            created: 1780185600, // May 27, 2026
+            owned_by: "anthropic".to_string(),
+            display_name: "Claude Opus 4.8".to_string(),
+            model_type: "chat".to_string(),
+            max_tokens: 64000,
+        },
+        Model {
+            id: "claude-opus-4-8-thinking".to_string(),
+            object: "model".to_string(),
+            created: 1780185600, // May 27, 2026
+            owned_by: "anthropic".to_string(),
+            display_name: "Claude Opus 4.8 (Thinking)".to_string(),
+            model_type: "chat".to_string(),
+            max_tokens: 64000,
+        },
+        Model {
             id: "claude-opus-4-7".to_string(),
             object: "model".to_string(),
             created: 1776276000, // Apr 16, 2026
