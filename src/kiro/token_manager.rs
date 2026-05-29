@@ -414,6 +414,12 @@ struct CredentialEntry {
     success_count: u64,
     /// 最后一次 API 调用时间（RFC3339 格式）
     last_used_at: Option<String>,
+    /// 冷冻开始时间（禁用时记录）
+    frozen_at: Option<Instant>,
+    /// 当前冷冻时长（指数退避）
+    freeze_duration: StdDuration,
+    /// 连续冷冻次数（用于指数退避计算）
+    freeze_count: u32,
 }
 
 /// 禁用原因
@@ -431,6 +437,16 @@ enum DisabledReason {
     InvalidRefreshToken,
     /// 凭据配置无效（如 authMethod=api_key 但缺少 kiroApiKey）
     InvalidConfig,
+}
+
+/// 解冻尝试结果
+enum ThawResult {
+    /// 至少有一个凭据被解冻
+    Thawed,
+    /// 所有可恢复凭据仍在冷冻中，返回最短剩余等待时间
+    WaitNeeded(StdDuration),
+    /// 所有凭据都是不可自动恢复的（Manual/InvalidConfig）
+    NoneRecoverable,
 }
 
 /// 统计数据持久化条目
@@ -487,6 +503,12 @@ pub struct CredentialEntrySnapshot {
     /// 端点名称（未显式配置时返回 None，由 Admin 层回退到默认值）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    /// 冷冻剩余秒数（0 = 未冷冻或已解冻）
+    #[serde(default)]
+    pub freeze_remaining_secs: u64,
+    /// 连续冷冻次数
+    #[serde(default)]
+    pub freeze_count: u32,
 }
 
 /// 凭据管理器状态快照
@@ -532,6 +554,44 @@ pub struct MultiTokenManager {
 const MAX_FAILURES_PER_CREDENTIAL: u32 = 3;
 /// 统计数据持久化防抖间隔
 const STATS_SAVE_DEBOUNCE: StdDuration = StdDuration::from_secs(30);
+
+/// 冷冻配置：各禁用原因的基础冷冻时长（秒）
+const FREEZE_BASE_SECS_TOO_MANY_FAILURES: u64 = 30;
+const FREEZE_BASE_SECS_TOO_MANY_REFRESH_FAILURES: u64 = 60;
+const FREEZE_BASE_SECS_QUOTA_EXCEEDED: u64 = 300;
+const FREEZE_BASE_SECS_INVALID_REFRESH_TOKEN: u64 = 120;
+
+/// 冷冻配置：各禁用原因的最大冷冻时长（秒）
+const FREEZE_MAX_SECS_TOO_MANY_FAILURES: u64 = 300;
+const FREEZE_MAX_SECS_TOO_MANY_REFRESH_FAILURES: u64 = 600;
+const FREEZE_MAX_SECS_QUOTA_EXCEEDED: u64 = 3600;
+const FREEZE_MAX_SECS_INVALID_REFRESH_TOKEN: u64 = 1800;
+
+/// 请求等待解冻的最大时长（秒）
+const MAX_WAIT_FOR_THAW_SECS: u64 = 30;
+
+/// 根据禁用原因获取基础冷冻时长
+fn base_freeze_duration(reason: &DisabledReason) -> Option<StdDuration> {
+    match reason {
+        DisabledReason::TooManyFailures => Some(StdDuration::from_secs(FREEZE_BASE_SECS_TOO_MANY_FAILURES)),
+        DisabledReason::TooManyRefreshFailures => Some(StdDuration::from_secs(FREEZE_BASE_SECS_TOO_MANY_REFRESH_FAILURES)),
+        DisabledReason::QuotaExceeded => Some(StdDuration::from_secs(FREEZE_BASE_SECS_QUOTA_EXCEEDED)),
+        DisabledReason::InvalidRefreshToken => Some(StdDuration::from_secs(FREEZE_BASE_SECS_INVALID_REFRESH_TOKEN)),
+        // Manual 和 InvalidConfig 不自动解冻
+        DisabledReason::Manual | DisabledReason::InvalidConfig => None,
+    }
+}
+
+/// 根据禁用原因获取最大冷冻时长
+fn max_freeze_duration(reason: &DisabledReason) -> StdDuration {
+    match reason {
+        DisabledReason::TooManyFailures => StdDuration::from_secs(FREEZE_MAX_SECS_TOO_MANY_FAILURES),
+        DisabledReason::TooManyRefreshFailures => StdDuration::from_secs(FREEZE_MAX_SECS_TOO_MANY_REFRESH_FAILURES),
+        DisabledReason::QuotaExceeded => StdDuration::from_secs(FREEZE_MAX_SECS_QUOTA_EXCEEDED),
+        DisabledReason::InvalidRefreshToken => StdDuration::from_secs(FREEZE_MAX_SECS_INVALID_REFRESH_TOKEN),
+        _ => StdDuration::from_secs(300),
+    }
+}
 
 /// API 调用上下文
 ///
@@ -599,6 +659,9 @@ impl MultiTokenManager {
                     },
                     success_count: 0,
                     last_used_at: None,
+                    frozen_at: None,
+                    freeze_duration: StdDuration::ZERO,
+                    freeze_count: 0,
                 }
             })
             .collect();
@@ -788,24 +851,31 @@ impl MultiTokenManager {
                     // 当前凭据不可用或 balanced 模式，根据负载均衡策略选择
                     let mut best = self.select_next_credential(model);
 
-                    // 没有可用凭据：如果是"自动禁用导致全灭"，做一次类似重启的自愈
+                    // 没有可用凭据：尝试自动解冻冷冻期已到的凭据
                     if best.is_none() {
-                        let mut entries = self.entries.lock();
-                        if entries.iter().any(|e| {
-                            e.disabled && e.disabled_reason == Some(DisabledReason::TooManyFailures)
-                        }) {
-                            tracing::warn!(
-                                "所有凭据均已被自动禁用，执行自愈：重置失败计数并重新启用（等价于重启）"
-                            );
-                            for e in entries.iter_mut() {
-                                if e.disabled_reason == Some(DisabledReason::TooManyFailures) {
-                                    e.disabled = false;
-                                    e.disabled_reason = None;
-                                    e.failure_count = 0;
-                                }
+                        let thaw_result = self.try_thaw_frozen_credentials(model);
+                        match thaw_result {
+                            ThawResult::Thawed => {
+                                // 有凭据被解冻，重新选择
+                                best = self.select_next_credential(model);
                             }
-                            drop(entries);
-                            best = self.select_next_credential(model);
+                            ThawResult::WaitNeeded(wait_duration) => {
+                                // 所有凭据都在冷冻中，等待最近一个解冻
+                                let wait = wait_duration.min(StdDuration::from_secs(MAX_WAIT_FOR_THAW_SECS));
+                                tracing::info!(
+                                    "所有凭据均在冷冻中，等待 {}s 后重试",
+                                    wait.as_secs()
+                                );
+                                tokio::time::sleep(wait).await;
+                                attempt_count += 1;
+                                continue;
+                            }
+                            ThawResult::NoneRecoverable => {
+                                // 所有凭据都是不可自动恢复的（Manual/InvalidConfig）
+                                let entries = self.entries.lock();
+                                let available = entries.iter().filter(|e| !e.disabled).count();
+                                anyhow::bail!("所有凭据均已禁用且不可自动恢复（{}/{}）", available, total);
+                            }
                         }
                     }
 
@@ -815,12 +885,11 @@ impl MultiTokenManager {
                         *current_id = new_id;
                         (new_id, new_creds)
                     } else {
-                        let entries = self.entries.lock();
-                        // 注意：必须在 bail! 之前计算 available_count，
-                        // 因为 available_count() 会尝试获取 entries 锁，
-                        // 而此时我们已经持有该锁，会导致死锁
-                        let available = entries.iter().filter(|e| !e.disabled).count();
-                        anyhow::bail!("所有凭据均已禁用（{}/{}）", available, total);
+                        // 解冻后仍然没有可用凭据（可能是 opus 模型过滤导致）
+                        // 再等一轮
+                        attempt_count += 1;
+                        tokio::time::sleep(StdDuration::from_secs(1)).await;
+                        continue;
                     }
                 }
             };
@@ -842,10 +911,97 @@ impl MultiTokenManager {
                         };
                     attempt_count += 1;
                     if !has_available {
-                        anyhow::bail!("所有凭据均已禁用（0/{}）", total);
+                        // 所有凭据都禁用了，但不直接 bail，让循环顶部的解冻逻辑处理
+                        continue;
                     }
                 }
             }
+        }
+    }
+
+    /// 尝试解冻冷冻期已到的凭据
+    ///
+    /// 返回解冻结果：
+    /// - Thawed: 至少有一个凭据被解冻
+    /// - WaitNeeded(duration): 所有凭据都在冷冻中，返回最短剩余等待时间
+    /// - NoneRecoverable: 所有凭据都是不可自动恢复的（Manual/InvalidConfig）
+    fn try_thaw_frozen_credentials(&self, model: Option<&str>) -> ThawResult {
+        let mut entries = self.entries.lock();
+        let now = Instant::now();
+        let mut thawed_any = false;
+        let mut min_remaining = StdDuration::MAX;
+        let mut has_recoverable = false;
+
+        // 检查是否是 opus 模型
+        let is_opus = model
+            .map(|m| m.to_lowercase().contains("opus"))
+            .unwrap_or(false);
+
+        for entry in entries.iter_mut() {
+            if !entry.disabled {
+                continue;
+            }
+
+            // 跳过不支持当前模型的凭据
+            if is_opus && !entry.credentials.supports_opus() {
+                continue;
+            }
+
+            let reason = match entry.disabled_reason {
+                Some(r) => r,
+                None => continue,
+            };
+
+            // Manual 和 InvalidConfig 不自动解冻
+            if base_freeze_duration(&reason).is_none() {
+                continue;
+            }
+
+            has_recoverable = true;
+
+            // 检查冷冻期是否到了
+            if let Some(frozen_at) = entry.frozen_at {
+                let elapsed = now.duration_since(frozen_at);
+                if elapsed >= entry.freeze_duration {
+                    // 冷冻期到了，解冻
+                    entry.disabled = false;
+                    entry.disabled_reason = None;
+                    entry.failure_count = 0;
+                    entry.refresh_failure_count = 0;
+                    entry.frozen_at = None;
+                    // 注意：freeze_count 和 freeze_duration 保留，
+                    // 如果再次失败会用更长的冷冻时间
+                    thawed_any = true;
+                    tracing::info!(
+                        "凭据 #{} 冷冻期已到（{}s），自动解冻（第 {} 次冷冻后）",
+                        entry.id,
+                        entry.freeze_duration.as_secs(),
+                        entry.freeze_count
+                    );
+                } else {
+                    // 还没到，计算剩余时间
+                    let remaining = entry.freeze_duration - elapsed;
+                    if remaining < min_remaining {
+                        min_remaining = remaining;
+                    }
+                }
+            } else {
+                // 没有 frozen_at 但是 disabled（异常状态），直接解冻
+                entry.disabled = false;
+                entry.disabled_reason = None;
+                entry.failure_count = 0;
+                entry.refresh_failure_count = 0;
+                thawed_any = true;
+                tracing::warn!("凭据 #{} 处于异常禁用状态（无冷冻时间），强制解冻", entry.id);
+            }
+        }
+
+        if thawed_any {
+            ThawResult::Thawed
+        } else if has_recoverable {
+            ThawResult::WaitNeeded(min_remaining)
+        } else {
+            ThawResult::NoneRecoverable
         }
     }
 
@@ -1132,6 +1288,10 @@ impl MultiTokenManager {
                 entry.refresh_failure_count = 0;
                 entry.success_count += 1;
                 entry.last_used_at = Some(Utc::now().to_rfc3339());
+                // 成功后重置冷冻计数，表示凭据完全恢复
+                entry.freeze_count = 0;
+                entry.frozen_at = None;
+                entry.freeze_duration = StdDuration::ZERO;
                 tracing::debug!(
                     "凭据 #{} API 调用成功（累计 {} 次）",
                     id,
@@ -1175,9 +1335,20 @@ impl MultiTokenManager {
             );
 
             if failure_count >= MAX_FAILURES_PER_CREDENTIAL {
+                let reason = DisabledReason::TooManyFailures;
                 entry.disabled = true;
-                entry.disabled_reason = Some(DisabledReason::TooManyFailures);
-                tracing::error!("凭据 #{} 已连续失败 {} 次，已被禁用", id, failure_count);
+                entry.disabled_reason = Some(reason);
+                // 设置冷冻参数
+                let base = base_freeze_duration(&reason).unwrap_or(StdDuration::from_secs(30));
+                let max = max_freeze_duration(&reason);
+                let duration = base.saturating_mul(2u32.saturating_pow(entry.freeze_count)).min(max);
+                entry.frozen_at = Some(Instant::now());
+                entry.freeze_duration = duration;
+                entry.freeze_count += 1;
+                tracing::error!(
+                    "凭据 #{} 已连续失败 {} 次，已被冷冻 {}s（第 {} 次冷冻）",
+                    id, failure_count, duration.as_secs(), entry.freeze_count
+                );
 
                 // 切换到优先级最高的可用凭据
                 if let Some(next) = entries
@@ -1222,13 +1393,23 @@ impl MultiTokenManager {
                 return entries.iter().any(|e| !e.disabled);
             }
 
+            let reason = DisabledReason::QuotaExceeded;
             entry.disabled = true;
-            entry.disabled_reason = Some(DisabledReason::QuotaExceeded);
+            entry.disabled_reason = Some(reason);
             entry.last_used_at = Some(Utc::now().to_rfc3339());
-            // 设为阈值，便于在管理面板中直观看到该凭据已不可用
             entry.failure_count = MAX_FAILURES_PER_CREDENTIAL;
+            // 设置冷冻参数
+            let base = base_freeze_duration(&reason).unwrap_or(StdDuration::from_secs(300));
+            let max = max_freeze_duration(&reason);
+            let duration = base.saturating_mul(2u32.saturating_pow(entry.freeze_count)).min(max);
+            entry.frozen_at = Some(Instant::now());
+            entry.freeze_duration = duration;
+            entry.freeze_count += 1;
 
-            tracing::error!("凭据 #{} 额度已用尽（MONTHLY_REQUEST_COUNT），已被禁用", id);
+            tracing::error!(
+                "凭据 #{} 额度已用尽，已被冷冻 {}s（第 {} 次冷冻）",
+                id, duration.as_secs(), entry.freeze_count
+            );
 
             // 切换到优先级最高的可用凭据
             if let Some(next) = entries
@@ -1285,13 +1466,20 @@ impl MultiTokenManager {
                 return entries.iter().any(|e| !e.disabled);
             }
 
+            let reason = DisabledReason::TooManyRefreshFailures;
             entry.disabled = true;
-            entry.disabled_reason = Some(DisabledReason::TooManyRefreshFailures);
+            entry.disabled_reason = Some(reason);
+            // 设置冷冻参数
+            let base = base_freeze_duration(&reason).unwrap_or(StdDuration::from_secs(60));
+            let max = max_freeze_duration(&reason);
+            let duration = base.saturating_mul(2u32.saturating_pow(entry.freeze_count)).min(max);
+            entry.frozen_at = Some(Instant::now());
+            entry.freeze_duration = duration;
+            entry.freeze_count += 1;
 
             tracing::error!(
-                "凭据 #{} Token 已连续刷新失败 {} 次，已被禁用",
-                id,
-                refresh_failure_count
+                "凭据 #{} Token 已连续刷新失败 {} 次，已被冷冻 {}s（第 {} 次冷冻）",
+                id, refresh_failure_count, duration.as_secs(), entry.freeze_count
             );
 
             if let Some(next) = entries
@@ -1333,13 +1521,21 @@ impl MultiTokenManager {
                 return entries.iter().any(|e| !e.disabled);
             }
 
+            let reason = DisabledReason::InvalidRefreshToken;
             entry.last_used_at = Some(Utc::now().to_rfc3339());
             entry.disabled = true;
-            entry.disabled_reason = Some(DisabledReason::InvalidRefreshToken);
+            entry.disabled_reason = Some(reason);
+            // 设置冷冻参数
+            let base = base_freeze_duration(&reason).unwrap_or(StdDuration::from_secs(120));
+            let max = max_freeze_duration(&reason);
+            let duration = base.saturating_mul(2u32.saturating_pow(entry.freeze_count)).min(max);
+            entry.frozen_at = Some(Instant::now());
+            entry.freeze_duration = duration;
+            entry.freeze_count += 1;
 
             tracing::error!(
-                "凭据 #{} refreshToken 已失效 (invalid_grant)，已立即禁用",
-                id
+                "凭据 #{} refreshToken 已失效，已被冷冻 {}s（第 {} 次冷冻）",
+                id, duration.as_secs(), entry.freeze_count
             );
 
             if let Some(next) = entries
@@ -1454,6 +1650,17 @@ impl MultiTokenManager {
                         DisabledReason::InvalidConfig => "InvalidConfig",
                     }.to_string()),
                     endpoint: e.credentials.endpoint.clone(),
+                    freeze_remaining_secs: e.frozen_at
+                        .map(|frozen_at| {
+                            let elapsed = Instant::now().duration_since(frozen_at);
+                            if elapsed >= e.freeze_duration {
+                                0
+                            } else {
+                                (e.freeze_duration - elapsed).as_secs()
+                            }
+                        })
+                        .unwrap_or(0),
+                    freeze_count: e.freeze_count,
                 })
                 .collect(),
             current_id,
@@ -1472,12 +1679,18 @@ impl MultiTokenManager {
                 .ok_or_else(|| anyhow::anyhow!("凭据不存在: {}", id))?;
             entry.disabled = disabled;
             if !disabled {
-                // 启用时重置失败计数
+                // 启用时重置失败计数和冷冻状态
                 entry.failure_count = 0;
                 entry.refresh_failure_count = 0;
                 entry.disabled_reason = None;
+                entry.frozen_at = None;
+                entry.freeze_duration = StdDuration::ZERO;
+                entry.freeze_count = 0;
             } else {
                 entry.disabled_reason = Some(DisabledReason::Manual);
+                // Manual 禁用不设置冷冻（不自动解冻）
+                entry.frozen_at = None;
+                entry.freeze_duration = StdDuration::ZERO;
             }
         }
         // 持久化更改
@@ -1523,6 +1736,10 @@ impl MultiTokenManager {
             entry.refresh_failure_count = 0;
             entry.disabled = false;
             entry.disabled_reason = None;
+            // 重置冷冻状态
+            entry.frozen_at = None;
+            entry.freeze_duration = StdDuration::ZERO;
+            entry.freeze_count = 0;
         }
         // 持久化更改
         self.persist_credentials()?;
@@ -1757,6 +1974,9 @@ impl MultiTokenManager {
                 disabled_reason: None,
                 success_count: 0,
                 last_used_at: None,
+                frozen_at: None,
+                freeze_duration: StdDuration::ZERO,
+                freeze_count: 0,
             });
         }
 
@@ -2327,7 +2547,18 @@ mod tests {
 
         assert_eq!(manager.available_count(), 0);
 
-        // 应触发自愈：重置失败计数并重新启用，避免必须重启进程
+        // 模拟冷冻期已过：将 frozen_at 设为过去
+        {
+            let mut entries = manager.entries.lock();
+            for e in entries.iter_mut() {
+                if e.frozen_at.is_some() {
+                    // 将 freeze_duration 设为 0，这样任何 elapsed 都 >= freeze_duration
+                    e.freeze_duration = StdDuration::ZERO;
+                }
+            }
+        }
+
+        // 应触发自动解冻：冷冻期已到，重置失败计数并重新启用
         let ctx = manager.acquire_context(None).await.unwrap();
         assert!(ctx.token == "t1" || ctx.token == "t2");
         assert_eq!(manager.available_count(), 2);
