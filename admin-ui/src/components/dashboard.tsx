@@ -423,6 +423,70 @@ export function Dashboard({ onLogout }: DashboardProps) {
     }
   }
 
+  // 批量导出凭据
+  const handleBatchExport = async () => {
+    if (selectedIds.size === 0) {
+      toast.error('请先选择要导出的凭据')
+      return
+    }
+
+    try {
+      const { exportCredentials } = await import('@/api/credentials')
+      const ids = Array.from(selectedIds)
+      const credentials = await exportCredentials(ids)
+
+      if (credentials.length === 0) {
+        toast.error('没有找到可导出的凭据')
+        return
+      }
+
+      // 生成 JSON 文件并下载
+      const json = JSON.stringify(credentials, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `credentials-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success(`已导出 ${credentials.length} 个凭据`)
+    } catch (error) {
+      toast.error('导出失败: ' + extractErrorMessage(error))
+    }
+  }
+
+  // 导出全部凭据
+  const handleExportAll = async () => {
+    if (!data?.credentials || data.credentials.length === 0) {
+      toast.error('没有可导出的凭据')
+      return
+    }
+
+    try {
+      const { exportCredentials } = await import('@/api/credentials')
+      const ids = data.credentials.map(c => c.id)
+      const credentials = await exportCredentials(ids)
+
+      const json = JSON.stringify(credentials, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `credentials-all-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success(`已导出全部 ${credentials.length} 个凭据`)
+    } catch (error) {
+      toast.error('导出失败: ' + extractErrorMessage(error))
+    }
+  }
+
   // 批量验活
   const handleBatchVerify = async () => {
     if (selectedIds.size === 0) {
@@ -738,6 +802,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     <Trash2 className="h-4 w-4 mr-2" />
                     批量删除
                   </Button>
+                  <Button onClick={handleBatchExport} size="sm" variant="outline">
+                    <Save className="h-4 w-4 mr-2" />
+                    导出选中
+                  </Button>
                 </>
               )}
               {verifying && !verifyDialogOpen && (
@@ -778,6 +846,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
                 <Upload className="h-4 w-4 mr-2" />
                 批量导入
               </Button>
+              {data?.credentials && data.credentials.length > 0 && (
+                <Button onClick={handleExportAll} size="sm" variant="outline">
+                  <Save className="h-4 w-4 mr-2" />
+                  导出全部
+                </Button>
+              )}
               <Button onClick={() => setAddDialogOpen(true)} size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 添加凭据

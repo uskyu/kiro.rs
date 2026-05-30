@@ -188,6 +188,14 @@ fn default_auth_method() -> String {
     "social".to_string()
 }
 
+/// 批量导出凭据请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportCredentialsRequest {
+    /// 要导出的凭据 ID 列表
+    pub ids: Vec<u64>,
+}
+
 /// 添加凭据成功响应
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

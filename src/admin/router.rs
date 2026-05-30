@@ -7,8 +7,8 @@ use axum::{
 
 use super::{
     handlers::{
-        add_credential, delete_credential, force_refresh_token, get_all_credentials,
-        get_cache_simulation, get_credential_balance, get_freeze_config,
+        add_credential, delete_credential, export_credentials, force_refresh_token,
+        get_all_credentials, get_cache_simulation, get_credential_balance, get_freeze_config,
         get_load_balancing_mode, get_model_system_prompts, get_stats, get_system_prompt,
         reset_failure_count, set_cache_simulation, set_credential_disabled,
         set_credential_priority, set_freeze_config, set_load_balancing_mode,
@@ -41,6 +41,7 @@ pub fn create_admin_router(state: AdminState) -> Router {
             "/credentials",
             get(get_all_credentials).post(add_credential),
         )
+        .route("/credentials/export", post(export_credentials))
         .route("/credentials/{id}", delete(delete_credential).put(update_credential))
         .route("/credentials/{id}/disabled", post(set_credential_disabled))
         .route("/credentials/{id}/priority", post(set_credential_priority))

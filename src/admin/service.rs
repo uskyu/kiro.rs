@@ -308,6 +308,11 @@ impl AdminService {
             .map_err(|e| self.classify_error(e, id))
     }
 
+    /// 批量导出凭据原始信息
+    pub fn export_credentials(&self, ids: &[u64]) -> Vec<KiroCredentials> {
+        self.token_manager.export_credentials(ids)
+    }
+
     /// 获取负载均衡模式
     pub fn get_load_balancing_mode(&self) -> LoadBalancingModeResponse {
         LoadBalancingModeResponse {

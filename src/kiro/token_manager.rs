@@ -2105,6 +2105,27 @@ impl MultiTokenManager {
         Ok(())
     }
 
+    /// 导出指定凭据的原始信息（Admin API）
+    ///
+    /// 返回凭据的 refresh_token、proxy 配置、region 等敏感信息，
+    /// 用于批量导出备份。
+    pub fn export_credentials(&self, ids: &[u64]) -> Vec<KiroCredentials> {
+        let entries = self.entries.lock();
+        ids.iter()
+            .filter_map(|id| {
+                entries
+                    .iter()
+                    .find(|e| e.id == *id)
+                    .map(|e| {
+                        let mut cred = e.credentials.clone();
+                        // 确保 id 字段被设置
+                        cred.id = Some(e.id);
+                        cred
+                    })
+            })
+            .collect()
+    }
+
     /// 强制刷新指定凭据的 Token（Admin API）
     ///
     /// 无条件调用上游 API 重新获取 access token，不检查是否过期。

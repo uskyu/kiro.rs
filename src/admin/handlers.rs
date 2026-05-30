@@ -9,9 +9,9 @@ use axum::{
 use super::{
     middleware::AdminState,
     types::{
-        AddCredentialRequest, SetCacheSimulationRequest, SetDisabledRequest,
-        SetLoadBalancingModeRequest, SetModelSystemPromptsRequest, SetPriorityRequest,
-        SetSystemPromptRequest, SuccessResponse, UpdateCredentialRequest,
+        AddCredentialRequest, ExportCredentialsRequest, SetCacheSimulationRequest,
+        SetDisabledRequest, SetLoadBalancingModeRequest, SetModelSystemPromptsRequest,
+        SetPriorityRequest, SetSystemPromptRequest, SuccessResponse, UpdateCredentialRequest,
     },
 };
 
@@ -210,6 +210,16 @@ pub async fn set_cache_simulation(
         Ok(response) => Json(response).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }
+}
+
+/// POST /api/admin/credentials/export
+/// 批量导出凭据原始信息（refresh_token、proxy 等）
+pub async fn export_credentials(
+    State(state): State<AdminState>,
+    Json(payload): Json<ExportCredentialsRequest>,
+) -> impl IntoResponse {
+    let credentials = state.service.export_credentials(&payload.ids);
+    Json(credentials)
 }
 
 /// GET /api/admin/stats

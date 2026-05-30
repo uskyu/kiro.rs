@@ -193,3 +193,29 @@ export async function updateCredential(
   const { data } = await api.put<SuccessResponse>(`/credentials/${id}`, req)
   return data
 }
+
+// 批量导出凭据原始信息
+export interface ExportedCredential {
+  id?: number
+  refreshToken?: string
+  accessToken?: string
+  authMethod?: string
+  clientId?: string
+  clientSecret?: string
+  priority?: number
+  region?: string
+  authRegion?: string
+  apiRegion?: string
+  machineId?: string
+  email?: string
+  proxyUrl?: string
+  proxyUsername?: string
+  proxyPassword?: string
+  kiroApiKey?: string
+  endpoint?: string
+}
+
+export async function exportCredentials(ids: number[]): Promise<ExportedCredential[]> {
+  const { data } = await api.post<ExportedCredential[]>('/credentials/export', { ids })
+  return data
+}
